@@ -1,0 +1,1 @@
+# Tavlio, a cross-platform and fully local desktop app for tracking and displaying users' digital habits

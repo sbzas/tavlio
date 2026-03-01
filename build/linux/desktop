@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=0.1.0
+Name=Tavlio
+Comment=A cross-platform, fully local desktop app for tracking and displaying users' digital habits
+# The Exec line includes %u to pass the URL to the application
+Exec=/usr/local/bin/tavlio.exe %u
+Terminal=false
+Type=Application
+Icon=tavlio.exe
+Categories=Utility;
+StartupWMClass=tavlio.exe
+
+ 

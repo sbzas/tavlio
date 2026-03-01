@@ -1,0 +1,11 @@
+.task
+bin
+bindings
+frontend/dist
+frontend/node_modules
+build/android
+build/appicon.icon
+build/docker
+build/ios
+build/linux/appimage/build
+build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
