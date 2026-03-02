@@ -3,6 +3,7 @@ package tracking
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"unsafe"
 
@@ -20,6 +21,12 @@ var (
     procOpenProcess               = kernel32.NewProc("OpenProcess")
     procQueryFullProcessImageName = kernel32.NewProc("QueryFullProcessImageNameW")
     procGetClassName              = user32.NewProc("GetClassNameW")
+
+    // necessary for grabbing human-friendly app names
+	version                    = windows.NewLazySystemDLL("version.dll")
+	procGetFileVersionInfoSize = version.NewProc("GetFileVersionInfoSizeW")
+	procGetFileVersionInfo     = version.NewProc("GetFileVersionInfoW")
+	procVerQueryValue          = version.NewProc("VerQueryValueW")
 )
 
 const (
@@ -50,13 +57,20 @@ func StartForegroundTracker(appChangeChan chan<- string) {
                 return 0
             }
 
+            friendlyName := getFileDescription(exePath)
+
+            // Fallback to the .exe name if the developer didn't include a FileDescription
+            if friendlyName == "" {
+                friendlyName = strings.TrimSuffix(exeName, filepath.Ext(exeName)) 
+            }
+
             // testing purposes
-            fmt.Printf("\n[Focus] App: %-20s | PID: %d\n", exeName, pid)
+            fmt.Printf("\n[Focus] App: %-20s | PID: %d\n", friendlyName, pid)
 
             // non-blocking send to channel to prevent blocking Windows callback
             go func(name string) {
                 appChangeChan <- name
-            }(exeName)
+            }(friendlyName)
         }
 
         return 0
@@ -129,4 +143,75 @@ func getClassName(hwnd uintptr) string {
         return ""
     }
     return syscall.UTF16ToString(buf)
+}
+
+// getFileDescription reads the embedded "Friendly Name" from an exe file
+func getFileDescription(exePath string) string {
+	pathPtr, err := syscall.UTF16PtrFromString(exePath)
+	if err != nil {
+		return ""
+	}
+
+	// get the size of the version info block
+	size, _, _ := procGetFileVersionInfoSize.Call(uintptr(unsafe.Pointer(pathPtr)), 0)
+	if size == 0 {
+		return ""
+	}
+
+	// allocate memory and retrieve the version info block
+	info := make([]byte, size)
+	ret, _, _ := procGetFileVersionInfo.Call(
+		uintptr(unsafe.Pointer(pathPtr)),
+		0,
+		size,
+		uintptr(unsafe.Pointer(&info[0])),
+	)
+	if ret == 0 {
+		return ""
+	}
+
+    // query the Translation table to find the language/codepage
+	var transPtr unsafe.Pointer 
+	var transLen uint32
+
+	transStrPtr, _ := syscall.UTF16PtrFromString(`\VarFileInfo\Translation`)
+
+	ret, _, _ = procVerQueryValue.Call(
+		uintptr(unsafe.Pointer(&info[0])),
+		uintptr(unsafe.Pointer(transStrPtr)),
+		uintptr(unsafe.Pointer(&transPtr)),
+		uintptr(unsafe.Pointer(&transLen)),
+	)
+
+	if ret == 0 || transLen < 4 {
+		return ""
+	}
+
+	// extract Language ID and Codepage from the pointer
+	lang := *(*uint16)(transPtr)
+	
+	// use unsafe.Add for safe pointer arithmetic preventing go linter warnings for potential invalid memory pointers
+	codepage := *(*uint16)(unsafe.Add(transPtr, 2))
+
+	// build the query string for the FileDescription
+	subBlock := fmt.Sprintf(`\StringFileInfo\%04x%04x\FileDescription`, lang, codepage)
+
+    // query the actual FileDescription string
+	var descPtr *uint16 
+	var descLen uint32
+
+	subBlockPtr, _ := syscall.UTF16PtrFromString(subBlock)
+
+	ret, _, _ = procVerQueryValue.Call(
+		uintptr(unsafe.Pointer(&info[0])),
+		uintptr(unsafe.Pointer(subBlockPtr)),
+		uintptr(unsafe.Pointer(&descPtr)), // Windows writes the *uint16 address directly here
+		uintptr(unsafe.Pointer(&descLen)),
+	)
+
+	if ret == 0 || descLen == 0 {
+		return ""
+	}
+
+	return windows.UTF16PtrToString(descPtr)
 }
