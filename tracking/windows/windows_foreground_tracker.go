@@ -39,33 +39,15 @@ const (
 func StartForegroundTracker(appChangeChan chan<- string) {
     callback := syscall.NewCallback(func(hWinEventHook, event, hwnd, idObject, idChild, dwEventThread, dwmsEventTime uintptr) uintptr {
         if event == EVENT_SYSTEM_FOREGROUND {
-            pid, exePath := getProcessInfo(hwnd)
-            className := getClassName(hwnd)
-
-            // Extract just the filename (e.g., "chrome.exe") in case the description is empty
-            exeName := filepath.Base(exePath) 
-
-            // filter noise
-            if exeName == "explorer.exe" || exeName == "Explorer.EXE" {
-                if className != "CabinetWClass" {
-                    return 0
-                }
-                exeName = "File Explorer"
-            }
-
-            if className == "TaskSwitcherWnd" || className == "MultitaskingViewFrame" {
+            friendlyName, isValid := getAppDetailsFromHWND(hwnd)
+        
+            // if helper function flagged this as noise, escape the callback
+            if !isValid {
                 return 0
             }
 
-            friendlyName := getFileDescription(exePath)
-
-            // Fallback to the .exe name if the developer didn't include a FileDescription
-            if friendlyName == "" {
-                friendlyName = strings.TrimSuffix(exeName, filepath.Ext(exeName)) 
-            }
-
             // testing purposes
-            fmt.Printf("\n[Focus] App: %-20s | PID: %d\n", friendlyName, pid)
+            fmt.Printf("\n[Focus] App: %-20s\n", friendlyName)
 
             // non-blocking send to channel to prevent blocking Windows callback
             go func(name string) {
@@ -145,7 +127,7 @@ func getClassName(hwnd uintptr) string {
     return syscall.UTF16ToString(buf)
 }
 
-// getFileDescription reads the embedded "Friendly Name" from an exe file
+// read the embedded "human-friendly" name from an exe file
 func getFileDescription(exePath string) string {
 	pathPtr, err := syscall.UTF16PtrFromString(exePath)
 	if err != nil {
@@ -214,4 +196,39 @@ func getFileDescription(exePath string) string {
 	}
 
 	return windows.UTF16PtrToString(descPtr)
+}
+
+// evaluate a window handle to return its human-friendly name or "false" if app is considered system noise
+func getAppDetailsFromHWND(hwnd uintptr) (string, bool) {
+    if hwnd == 0 {
+        return "", false
+    }
+
+    _, exePath := getProcessInfo(hwnd)
+    className := getClassName(hwnd)
+
+    // Extract just the filename (e.g., "chrome.exe") in case the description is empty
+    exeName := filepath.Base(exePath) 
+
+    // filter noise
+    if exeName == "explorer.exe" || exeName == "Explorer.EXE" {
+        if className != "CabinetWClass" {
+            return "", false
+        }
+        exeName = "File Explorer"
+    }
+
+    // ignore alt + tab overlays
+    if className == "TaskSwitcherWnd" || className == "MultitaskingViewFrame" {
+        return "", false
+    }
+
+    friendlyName := getFileDescription(exePath)
+
+    // Fallback to the .exe name if the developer didn't include a FileDescription
+    if friendlyName == "" {
+        friendlyName = strings.TrimSuffix(exeName, filepath.Ext(exeName)) 
+    } 
+
+    return friendlyName, true
 }
