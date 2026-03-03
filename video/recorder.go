@@ -5,6 +5,7 @@ import (
     "os"
     "os/exec"
     "path/filepath"
+    "time"
 )
 
 // build an MP4 from a list of images using ffmpeg
@@ -52,6 +53,49 @@ func EncodeFromImages(imagePaths []string, outputPath string) error {
     output, err := cmd.CombinedOutput()
     if err != nil {
         return fmt.Errorf("ffmpeg error: %v, output: %s", err, string(output))
+    }
+
+    return nil
+}
+
+// merge multiple mp4 chunks into a single mp4 instantly without re-encoding
+func ConcatVideos(chunkPaths []string, outputPath string) error {
+    if len(chunkPaths) == 0 {
+        return nil
+    }
+    
+    // if there's only one chunk (session was < 5 mins), just rename it to the final path
+    if len(chunkPaths) == 1 {
+        return os.Rename(chunkPaths[0], outputPath)
+    }
+
+    //create a list file for FFmpeg in the same directory as the chunks
+    tempDir := filepath.Dir(chunkPaths[0])
+    listPath := filepath.Join(tempDir, fmt.Sprintf("concat_list_%d.txt", time.Now().UnixNano()))
+    
+    listFile, err := os.Create(listPath)
+    if err != nil {
+        return err
+    }
+
+    // write the chunks' filenames
+    for _, path := range chunkPaths {
+        fileName := filepath.Base(path)
+        fmt.Fprintf(listFile, "file '%s'\n", fileName)
+    }
+    listFile.Close()
+    defer os.Remove(listPath) // Clean up list
+
+    // run FFmpeg with "-c copy" (instantly copies streams, no quality loss or heavy CPU usage)
+    cmd := exec.Command("ffmpeg", "-y", "-f", "concat", "-safe", "0", 
+        "-i", listPath, 
+        "-c", "copy", 
+        outputPath,
+    )
+
+    output, err := cmd.CombinedOutput()
+    if err != nil {
+        return fmt.Errorf("ffmpeg concat error: %v\nOutput: %s", err, string(output))
     }
 
     return nil
