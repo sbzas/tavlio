@@ -22,6 +22,8 @@ var (
     procQueryFullProcessImageName = kernel32.NewProc("QueryFullProcessImageNameW")
     procGetClassName              = user32.NewProc("GetClassNameW")
 
+    procGetForegroundWindow = user32.NewProc("GetForegroundWindow")
+
     // necessary for grabbing human-friendly app names
 	version                    = windows.NewLazySystemDLL("version.dll")
 	procGetFileVersionInfoSize = version.NewProc("GetFileVersionInfoSizeW")
@@ -231,4 +233,18 @@ func getAppDetailsFromHWND(hwnd uintptr) (string, bool) {
     } 
 
     return friendlyName, true
+}
+
+// gets the current window's (in focus) app name on app startup
+func GetCurrentActiveApp() string {
+    hwnd, _, _ := procGetForegroundWindow.Call()
+    
+    friendlyName, isValid := getAppDetailsFromHWND(hwnd)
+    
+    // If the app starts while the user is focused on the desktop or taskbar
+    if !isValid || friendlyName == "" {
+        return "Desktop"
+    }
+
+    return friendlyName
 }
