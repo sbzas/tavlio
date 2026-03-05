@@ -151,3 +151,16 @@ func (s *Store) EndSession(sessionID int64, startTime time.Time) error {
     
     return nil
 }
+
+// Find any 'pending' rows older than 24 hours and mark them as failed for the VLM to ignore
+func (s *Store) MarkOrphansAsFailed() error {
+    cutoff := time.Now().Add(-24 * time.Hour).Unix()
+    
+    _, err := s.DB.Exec(`
+        UPDATE context_logs 
+        SET processing_status = 'failed', description = 'VLM Processing Timeout' 
+        WHERE processing_status = 'pending' AND timestamp < ?`, 
+        cutoff)
+        
+    return err
+}
