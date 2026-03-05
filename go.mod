@@ -3,6 +3,7 @@ module tavlio
 go 1.26.0
 
 require (
+	github.com/corona10/goimagehash v1.1.0
 	github.com/wailsapp/wails/v3 v3.0.0-alpha.74
 	golang.org/x/sys v0.40.0
 	modernc.org/sqlite v1.44.3
@@ -37,6 +38,7 @@ require (
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
+	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646 // indirect
 	github.com/pjbgf/sha1cd v0.5.0 // indirect
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
