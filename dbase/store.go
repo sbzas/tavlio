@@ -37,6 +37,7 @@ func (s *Store) createSchema() error {
         app_id INTEGER NOT NULL,
         start_time INTEGER NOT NULL,
         end_time INTEGER,
+        duration_seconds INTEGER,
         FOREIGN KEY(app_id) REFERENCES apps(id)
     );
     CREATE TABLE IF NOT EXISTS context_logs (
