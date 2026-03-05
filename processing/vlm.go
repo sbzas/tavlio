@@ -49,9 +49,10 @@ type ChatResponse struct {
 type VLMClient struct {
 	Store    *dbase.Store
 	LastHash *goimagehash.ImageHash
+	LastProcessTime time.Time 
 }
 
-// VISUAL DIFF: checks if frame is different enough to process
+// VISUAL DIFF: checks if frame is different enough to process (ft. a cooldown)
 func (v *VLMClient) ShouldProcess(img image.Image) (bool, string) {
 	newHash, err := goimagehash.DifferenceHash(img)
 	if err != nil {
@@ -60,29 +61,30 @@ func (v *VLMClient) ShouldProcess(img image.Image) (bool, string) {
 	}
 
 	hashStr := newHash.ToString()
+	now := time.Now()
+
+	if !v.LastProcessTime.IsZero() && now.Sub(v.LastProcessTime) < 15*time.Second {
+		v.LastHash = newHash // keep updating baseline, but skip processing
+		return false, hashStr
+    }
 
 	if v.LastHash != nil {
 		distance, err := newHash.Distance(v.LastHash)
-		if err != nil {
-			return true, hashStr
-		}
-
-		// if distance < 10, images are nearly identical
-		if distance < 10 {
-			// keeping the old hash baseline prevents "drift" from slow, gradual screen changes.
-			return false, hashStr
-		}
+        if err == nil && distance < 10 {
+            return false, hashStr // screen is static
+        }
 	}
 	
-	// significant change detected, update baseline
+	// significant change detected AND the cooldown is finished
 	v.LastHash = newHash
+	v.LastProcessTime = now
 	return true, hashStr
 }
 
 // BATCH PROCESSOR: runs periodically to process pending images
 func (v *VLMClient) RunBatch() {
 	// check if there's enough work
-	pending, err := v.Store.GetPendingImages(6)
+	pending, err := v.Store.GetPendingImages(18)
 	if err != nil {
 		log.Printf("Error fetching pending images: %v", err)
 		return
@@ -142,47 +144,65 @@ func (v *VLMClient) RunBatch() {
 
 	log.Println("Server ready! Processing images...")
 
-	for _, item := range pending {
-		desc := v.callLlamaServer(item.Path)
+	// group images by SessionID
+    sessionGroups := make(map[int][]dbase.PendingImage)
+    for _, item := range pending {
+        sessionGroups[item.SessionID] = append(sessionGroups[item.SessionID], item)
+    }
 
-        // testing purposes
-        log.Printf("-> Saving to DB (ID %d): %q\n", item.ID, desc)
+    // process each session group as a single prompt
+    for sessionID, items := range sessionGroups {
+        var paths []string
+        for _, item := range items {
+            paths = append(paths, item.Path)
+        }
 
-		v.Store.UpdateDescription(item.ID, desc)
+        summaryDesc := v.callLlamaServer(paths)
+        log.Printf("-> Session %d Summary: %q\n", sessionID, summaryDesc)
 
-		// screenshot was already sent to the VLM for processing
-		// and there also exists a video that contains it, so it becomes unnecessary
-		os.Remove(item.Path)
-
-		fmt.Printf("Processed & Deleted ID %d\n", item.ID)
-	}
+        // apply the summary to all DB rows in this chunk and delete the files
+        for _, item := range items {
+            v.Store.UpdateDescription(item.ID, summaryDesc)
+            os.Remove(item.Path)
+            fmt.Printf("Processed & Deleted ID %d\n", item.ID)
+        }
+    }
 }
 
 // HTTP CLIENT: calls the running server
-func (v *VLMClient) callLlamaServer(imagePath string) string {
-	imgBytes, err := os.ReadFile(imagePath)
-	if err != nil {
-		log.Printf("VLM: Error reading file %s: %v", imagePath, err)
-		return ""
-	}
+func (v *VLMClient) callLlamaServer(imagePaths []string) string {
+	if len(imagePaths) == 0 { return "" }
 
-	base64Str := base64.StdEncoding.EncodeToString(imgBytes)
-	dataURL := fmt.Sprintf("data:image/png;base64,%s", base64Str)
+	// cap the number of images per prompt to avoid overloading context window
+    maxImages := 6 
+    if len(imagePaths) > maxImages {
+        imagePaths = imagePaths[:maxImages] 
+    }
 
 	// construct the payload & send the request
-	prompt := "Briefly describe the main activity on this computer screen in one sentence."
+    prompt := "These are sequential screenshots from a user's computer session. Summarize the overall activity and workflow progression in 1 or 2 clear sentences."
+    content := []Content{{Type: "text", Text: prompt}}
+
+	// append each image to the payload
+    for _, path := range imagePaths {
+        imgBytes, err := os.ReadFile(path)
+        if err != nil { continue }
+        
+        base64Str := base64.StdEncoding.EncodeToString(imgBytes)
+        dataURL := fmt.Sprintf("data:image/png;base64,%s", base64Str)
+        
+        content = append(content, Content{
+            Type: "image_url", 
+            ImageURL: &ImageURL{URL: dataURL},
+        })
+    }
 
 	payload := ChatRequest{
 		Model: "gemma-3-4b-it-qat-GGUF",
-		Messages: []Message{
-			{
+		Messages: []Message{{
 				Role: "user",
-				Content: []Content{
-					{Type: "text", Text: prompt},
-					{Type: "image_url", ImageURL: &ImageURL{URL: dataURL}},
-				},
-			},
-		},
+				Content: content,
+			}},
 	}
 
 	jsonData, err := json.Marshal(payload)

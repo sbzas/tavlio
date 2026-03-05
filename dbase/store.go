@@ -12,6 +12,13 @@ type Store struct {
     DB *sql.DB
 }
 
+// hold the data needed by the VLM Batch Processor
+type PendingImage struct {
+    ID        int
+    SessionID int
+    Path      string
+}
+
 func NewStore(dbPath string) (*Store, error) {
     db, err := sql.Open("sqlite", dbPath+"?_pragma=journal_mode=WAL&_pragma=busy_timeout=5000")
     if err != nil {
@@ -105,15 +112,16 @@ func (s *Store) LogRecording(sessionID int64, filePath string, startTime int64, 
     return err
 }
 
-func (s *Store) GetPendingImages(limit int) ([]struct{ID int; Path string}, error) {
-    rows, err := s.DB.Query("SELECT id, image_path FROM context_logs WHERE processing_status = 'pending' LIMIT ?", limit)
+// retrieve images and their associated session ID
+func (s *Store) GetPendingImages(limit int) ([]PendingImage, error) {
+    rows, err := s.DB.Query("SELECT id, session_id, image_path FROM context_logs WHERE processing_status = 'pending' LIMIT ?", limit)
     if err != nil { return nil, err }
     defer rows.Close()
 
-    var results []struct{ID int; Path string}
+    var results []PendingImage
     for rows.Next() {
-        var r struct{ID int; Path string}
-        if err := rows.Scan(&r.ID, &r.Path); err != nil {
+        var r PendingImage
+        if err := rows.Scan(&r.ID, r.SessionID, &r.Path); err != nil {
             continue
         }
         results = append(results, r)
