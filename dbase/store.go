@@ -57,6 +57,14 @@ func (s *Store) createSchema() error {
         perceptual_hash TEXT,
         FOREIGN KEY(session_id) REFERENCES sessions(id)
     );
+    CREATE TABLE IF NOT EXISTS context_switches (
+        id INTEGER PRIMARY KEY,
+        session_id INTEGER NOT NULL,
+        app_name TEXT NOT NULL,
+        start_time INTEGER NOT NULL,
+        duration_seconds INTEGER NOT NULL,
+        FOREIGN KEY(session_id) REFERENCES sessions(id)
+    );
     CREATE TABLE IF NOT EXISTS recordings (
         id INTEGER PRIMARY KEY,
         session_id INTEGER NOT NULL,
@@ -100,6 +108,15 @@ func (s *Store) LogScreenshot(sessionID int64, path string, hash string, status 
         VALUES (?, ?, ?, ?, ?)`, 
         sessionID, time.Now().Unix(), path, hash, status)
 
+    return err
+}
+
+// record a brief distraction that occurred during a main session
+func (s *Store) LogContextSwitch(sessionID int64, appName string, startTime int64, durationSec int) error {
+    _, err := s.DB.Exec(`
+        INSERT INTO context_switches (session_id, app_name, start_time, duration_seconds)
+        VALUES (?, ?, ?, ?)`,
+        sessionID, appName, startTime, durationSec)
     return err
 }
 
