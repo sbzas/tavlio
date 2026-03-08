@@ -5,13 +5,16 @@ import (
 	_ "embed"
 	"fmt"
 	"image/jpeg"
-	"os"
-	"path/filepath"
 	"log"
+	"maps"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"syscall"
 	"time"
 
-	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/kbinani/screenshot"
+	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"tavlio/dbase"
 	"tavlio/processing"
@@ -94,6 +97,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+    go trackNrecord(db)
 }
 
 // orchestrate all app modules to properly track and record the user's actions
@@ -103,7 +108,6 @@ func trackNrecord(db *dbase.Store) {
     go winTracking.StartForegroundTracker(appChangeChan)
 
     vlm := &processing.VLMClient{Store: db}
-    go trackNrecord(db)
 
     // Background VLM
     go func() {
@@ -121,17 +125,51 @@ func trackNrecord(db *dbase.Store) {
         distractStart  time.Time
 
         frameBuffer    []string    
-        sessionChunks  []string
         graceBuffer      []PendingFrame
         vlmNeededFiles = make(map[string]bool) 
         sessionID      int64
+
+        heartbeatCounter  = 0
+        mainVideoPath     string
+        isRecordingLogged bool
     )
 
     sessionID, _ = db.LogSessionStart(currentApp)
+    mainVideoPath = filepath.Join("data/videos", fmt.Sprintf("session_%d_%s.mp4", sessionID, time.Now().Format("20060102_150405")))
+
     ticker := time.NewTicker(1 * time.Second)
+
+    sigChan := make(chan os.Signal, 1)
+    signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	
 	for {
         select {
+        // ----- GRACEFUL SHUTDOWN -----
+        case <-sigChan:
+            fmt.Println("\n[Shutdown] Saving final session data...")
+
+            // dump anything in the holding pen back to the main buffer (removed duplicate DB logging here)
+            for _, f := range graceBuffer {
+                frameBuffer = append(frameBuffer, f.Path)
+            }
+
+            // flush the final frames to the main video synchronously to ensure it finishes before exit
+            if len(frameBuffer) > 0 {
+                chunkPath := generateTempVideoPath()
+                createChunkAndCleanImages(frameBuffer, chunkPath, vlmNeededFiles)
+                video.AppendToMainVideo(mainVideoPath, chunkPath)
+
+                if !isRecordingLogged {
+                    db.LogRecording(sessionID, mainVideoPath, sessionStart.Unix(), int(time.Since(sessionStart).Seconds()))
+                }
+            }
+
+            // final DB heartbeat to close out the session duration
+            db.UpdateSessionHeartbeat(sessionID, sessionStart)
+
+            fmt.Println("[Shutdown] Complete. Exiting safely.")
+            os.Exit(0)
+
         // ----- CASE A: user switched apps -----
         case newAppName := <-appChangeChan:
             if !awaySince.IsZero() && latestApp != currentApp {
@@ -167,6 +205,12 @@ func trackNrecord(db *dbase.Store) {
 
         // ----- CASE B: 1s ticks (for screenshots) -----
         case <-ticker.C:
+            heartbeatCounter++
+            if heartbeatCounter >= 60 {
+                db.UpdateSessionHeartbeat(sessionID, sessionStart)
+                heartbeatCounter = 0
+            }
+
             // ----- DEBOUNCE CHECK -----
             if !awaySince.IsZero() && time.Since(awaySince) >= 60*time.Second {
                 fmt.Printf("\n[Session Switch] 60s elapsed. Committing switch to %s\n", latestApp)
@@ -175,31 +219,34 @@ func trackNrecord(db *dbase.Store) {
                 if len(frameBuffer) > 0 {
                     chunkPath := generateTempVideoPath()
                     createChunkAndCleanImages(frameBuffer, chunkPath, vlmNeededFiles)
-                    sessionChunks = append(sessionChunks, chunkPath)
-                }
-                
-                if len(sessionChunks) > 0 {
-                    finalVideoPath := filepath.Join("data/videos", fmt.Sprintf("session_%d_%s.mp4", sessionID, time.Now().Format("20060102_150405")))
-                    if err := video.ConcatVideos(sessionChunks, finalVideoPath); err == nil {
-                        db.LogRecording(sessionID, finalVideoPath, sessionStart.Unix(), int(time.Since(sessionStart).Seconds()))
-                        for _, chunk := range sessionChunks { os.Remove(chunk) }
+                    video.AppendToMainVideo(mainVideoPath, chunkPath)
+
+                    if !isRecordingLogged {
+                        db.LogRecording(sessionID, mainVideoPath, sessionStart.Unix(), int(time.Since(sessionStart).Seconds()))
                     }
+
                 }
                 
+                // final DB update for current session
                 db.UpdateSessionHeartbeat(sessionID, sessionStart)
 
                 // start NEW session and reset the timer
                 currentApp = latestApp
                 sessionStart = awaySince
                 frameBuffer = []string{}
-                sessionChunks = []string{}
-                //vlmNeededFiles = make(map[string]bool)
+                vlmNeededFiles = make(map[string]bool)
 
                 sessionID, _ = db.LogSessionStart(currentApp)
+
+                heartbeatCounter = 0
+                mainVideoPath = filepath.Join("data/videos", fmt.Sprintf("session_%d_%s.mp4", sessionID, time.Now().Format("20060102_150405")))
+                isRecordingLogged = false
 
                 // DUMP HOLDING PEN -> NEW SESSION
                 for _, f := range graceBuffer {
                     frameBuffer = append(frameBuffer, f.Path)
+
+                    db.UpdateScreenshotSession(f.Path, sessionID) 
                 }
                 graceBuffer = nil
                 
@@ -209,12 +256,32 @@ func trackNrecord(db *dbase.Store) {
 
             // create an intermediate video chunk (every 5 mins), but KEEP session active
             if len(frameBuffer) >= MaxFramesPerChunk {
+                // use copies of frame slices to  later prevent main loop execution from being temporarily blocked
+                framesCopy := make([]string, len(frameBuffer))
+                copy(framesCopy, frameBuffer)
+
+                keepMapCopy := make(map[string]bool)
+                maps.Copy(keepMapCopy, vlmNeededFiles)
+
                 chunkPath := generateTempVideoPath()
-                createChunkAndCleanImages(frameBuffer, chunkPath, vlmNeededFiles)
-                
-                sessionChunks = append(sessionChunks, chunkPath)
-                
+                currentMainVideoPath := mainVideoPath
+                currentSessionID := sessionID
+                currentSessionStart := sessionStart
+                logFirstChunk := !isRecordingLogged
+
+                // offload encoding to a goroutine to prevent blocking the event loop
+                go func(frames []string, keepMap map[string]bool, cPath, mPath string, sID int64, sStart time.Time, logRec bool) {
+                    createChunkAndCleanImages(frames, cPath, keepMap)
+                    err := video.AppendToMainVideo(mPath, cPath)
+
+                    if err == nil && logRec {
+                        db.LogRecording(sID, mPath, sStart.Unix(), int(time.Since(sStart).Seconds()))
+                    }
+                }(framesCopy, keepMapCopy, chunkPath, currentMainVideoPath, currentSessionID, currentSessionStart, logFirstChunk)
+
+                isRecordingLogged = true
                 frameBuffer = []string{}
+                vlmNeededFiles = make(map[string]bool)
             }
 
             // capture frame
@@ -224,7 +291,11 @@ func trackNrecord(db *dbase.Store) {
 
             // save + compute visual diff
             fileName := filepath.Join("data/screenshots", fmt.Sprintf("%d_%d.jpg", sessionID, time.Now().UnixNano()))
-            file, _ := os.Create(fileName)
+            file, err := os.Create(fileName)
+            if err != nil {
+                fmt.Printf("\nError creating screenshot file: %v\n", err)
+                continue 
+            }
             jpeg.Encode(file, img, &jpeg.Options{Quality: 80})
             file.Close()
 
