@@ -3,7 +3,6 @@ package dbase
 import (
     "database/sql"
     "time"
-    "fmt"
 
     _ "modernc.org/sqlite"
 )
@@ -153,29 +152,40 @@ func (s *Store) UpdateDescription(id int, description string) error {
     return err
 }
 
-// Update the finish time and duration of a session
-func (s *Store) EndSession(sessionID int64, startTime time.Time) error {
+// safely extend the current session and recording durations
+func (s *Store) UpdateSessionHeartbeat(sessionID int64, startTime time.Time) error {
     now := time.Now()
-    endTimeUnix := now.Unix()
-    durationSeconds := int(now.Sub(startTime).Seconds())
-
-    res, err := s.DB.Exec(`
+    durationSec := int(now.Sub(startTime).Seconds())
+    
+    // update the session's running duration
+    _, err := s.DB.Exec(`
         UPDATE sessions 
         SET end_time = ?, duration_seconds = ? 
         WHERE id = ?`, 
-        endTimeUnix, durationSeconds, sessionID)
+        now.Unix(), durationSec, sessionID)
         
-    if err != nil {
-        fmt.Printf("\n[DB Error] Failed to end session %d: %v\n", sessionID, err)
-        return err
-    }
+    if err != nil { return err }
     
-    rowsAffected, _ := res.RowsAffected()
-    if rowsAffected == 0 {
-        fmt.Printf("\n[DB Warning] Tried to end session %d, but it was not found in DB!\n", sessionID)
-    }
-    
-    return nil
+    // update the main video's duration (if it has been logged yet)
+    _, err = s.DB.Exec(`
+        UPDATE recordings 
+        SET duration_seconds = ? 
+        WHERE session_id = ?`, 
+        durationSec, sessionID)
+        
+    return err
+}
+
+
+// update the session ID for a screenshot (for when grace period commits to a new session)
+func (s *Store) UpdateScreenshotSession(imagePath string, newSessionID int64) error {
+    _, err := s.DB.Exec(`
+        UPDATE context_logs 
+        SET session_id = ? 
+        WHERE image_path = ?`, 
+        newSessionID, imagePath)
+        
+    return err
 }
 
 // Find any 'pending' rows older than 24 hours and mark them as failed for the VLM to ignore

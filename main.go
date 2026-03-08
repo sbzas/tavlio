@@ -186,7 +186,7 @@ func trackNrecord(db *dbase.Store) {
                     }
                 }
                 
-                db.EndSession(sessionID, sessionStart)
+                db.UpdateSessionHeartbeat(sessionID, sessionStart)
 
                 // start NEW session and reset the timer
                 currentApp = latestApp
