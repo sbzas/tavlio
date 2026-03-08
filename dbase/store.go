@@ -81,6 +81,10 @@ func (s *Store) createSchema() error {
     CREATE TRIGGER IF NOT EXISTS context_logs_ai AFTER INSERT ON context_logs BEGIN
         INSERT INTO context_search(rowid, description) VALUES (new.id, new.description);
     END;
+    CREATE TRIGGER IF NOT EXISTS context_logs_ai_update AFTER UPDATE OF description ON context_logs 
+    BEGIN
+        UPDATE context_search SET description = new.description WHERE rowid = old.id;
+    END;
     `
     _, err := s.DB.Exec(schema)
 
