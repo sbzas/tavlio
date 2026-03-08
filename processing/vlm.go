@@ -189,7 +189,7 @@ func (v *VLMClient) callLlamaServer(imagePaths []string) string {
         if err != nil { continue }
         
         base64Str := base64.StdEncoding.EncodeToString(imgBytes)
-        dataURL := fmt.Sprintf("data:image/png;base64,%s", base64Str)
+        dataURL := fmt.Sprintf("data:image/jpeg;base64,%s", base64Str)
         
         content = append(content, Content{
             Type: "image_url", 
