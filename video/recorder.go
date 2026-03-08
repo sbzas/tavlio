@@ -100,3 +100,23 @@ func ConcatVideos(chunkPaths []string, outputPath string) error {
 
     return nil
 }
+
+// attach a new chunk to the main session video on disk
+func AppendToMainVideo(mainPath, chunkPath string) error {
+    if _, err := os.Stat(mainPath); os.IsNotExist(err) {
+        return os.Rename(chunkPath, mainPath)
+    }
+
+    tempPath := mainPath + ".tmp.mp4"
+    err := ConcatVideos([]string{mainPath, chunkPath}, tempPath)
+    if err != nil {
+        return err
+    }
+
+    // replace old "main" with the newly merged version, and clean up
+    os.Remove(mainPath)
+    os.Rename(tempPath, mainPath)
+    os.Remove(chunkPath)
+    
+    return nil
+}
