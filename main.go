@@ -109,13 +109,6 @@ func trackNrecord(db *dbase.Store) {
 
     vlm := &processing.VLMClient{Store: db}
 
-    // Background VLM
-    go func() {
-        for range time.Tick(1 * time.Minute) {
-            vlm.RunBatch()
-        }
-    }()
-
 	// state Variables
     var (
         currentApp     = winTracking.GetCurrentActiveApp()
@@ -165,7 +158,7 @@ func trackNrecord(db *dbase.Store) {
             }
 
             // final DB heartbeat to close out the session duration
-            db.UpdateSessionHeartbeat(sessionID, sessionStart)
+            db.UpdateSessionHeartbeat(sessionID, sessionStart, time.Now())
 
             fmt.Println("[Shutdown] Complete. Exiting safely.")
             os.Exit(0)
@@ -207,7 +200,7 @@ func trackNrecord(db *dbase.Store) {
         case <-ticker.C:
             heartbeatCounter++
             if heartbeatCounter >= 60 {
-                db.UpdateSessionHeartbeat(sessionID, sessionStart)
+                db.UpdateSessionHeartbeat(sessionID, sessionStart, time.Now())
                 heartbeatCounter = 0
             }
 
@@ -222,13 +215,15 @@ func trackNrecord(db *dbase.Store) {
                     video.AppendToMainVideo(mainVideoPath, chunkPath)
 
                     if !isRecordingLogged {
-                        db.LogRecording(sessionID, mainVideoPath, sessionStart.Unix(), int(time.Since(sessionStart).Seconds()))
+                        db.LogRecording(sessionID, mainVideoPath, sessionStart.Unix(), int(awaySince.Sub(sessionStart).Seconds()))
                     }
-
                 }
+
+                chunkEndTime := awaySince.Unix()
+                go vlm.RunBatch(chunkEndTime)
                 
                 // final DB update for current session
-                db.UpdateSessionHeartbeat(sessionID, sessionStart)
+                db.UpdateSessionHeartbeat(sessionID, sessionStart, awaySince)
 
                 // start NEW session and reset the timer
                 currentApp = latestApp
@@ -269,15 +264,20 @@ func trackNrecord(db *dbase.Store) {
                 currentSessionStart := sessionStart
                 logFirstChunk := !isRecordingLogged
 
+                //VLM will only handle frames from already bundled videos
+                chunkEndTime := time.Now().Unix() - 1
+
                 // offload encoding to a goroutine to prevent blocking the event loop
-                go func(frames []string, keepMap map[string]bool, cPath, mPath string, sID int64, sStart time.Time, logRec bool) {
+                go func(frames []string, keepMap map[string]bool, cPath, mPath string, sID int64, sStart time.Time, logRec bool, maxTs int64) {
                     createChunkAndCleanImages(frames, cPath, keepMap)
                     err := video.AppendToMainVideo(mPath, cPath)
 
                     if err == nil && logRec {
                         db.LogRecording(sID, mPath, sStart.Unix(), int(time.Since(sStart).Seconds()))
                     }
-                }(framesCopy, keepMapCopy, chunkPath, currentMainVideoPath, currentSessionID, currentSessionStart, logFirstChunk)
+
+                    vlm.RunBatch(maxTs)
+                }(framesCopy, keepMapCopy, chunkPath, currentMainVideoPath, currentSessionID, currentSessionStart, logFirstChunk, chunkEndTime)
 
                 isRecordingLogged = true
                 frameBuffer = []string{}

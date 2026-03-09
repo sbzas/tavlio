@@ -1,10 +1,11 @@
 package dbase
 
 import (
-    "database/sql"
-    "time"
+	"database/sql"
+	"fmt"
+	"time"
 
-    _ "modernc.org/sqlite"
+	_ "modernc.org/sqlite"
 )
 
 type Store struct {
@@ -83,7 +84,8 @@ func (s *Store) createSchema() error {
     END;
     CREATE TRIGGER IF NOT EXISTS context_logs_ai_update AFTER UPDATE OF description ON context_logs 
     BEGIN
-        UPDATE context_search SET description = new.description WHERE rowid = old.id;
+        INSERT INTO context_search(context_search, rowid, description) VALUES ('delete', old.id, old.description);
+        INSERT INTO context_search(rowid, description) VALUES (new.id, new.description);
     END;
     `
     _, err := s.DB.Exec(schema)
@@ -133,15 +135,19 @@ func (s *Store) LogRecording(sessionID int64, filePath string, startTime int64, 
 }
 
 // retrieve images and their associated session ID
-func (s *Store) GetPendingImages(limit int) ([]PendingImage, error) {
-    rows, err := s.DB.Query("SELECT id, session_id, image_path FROM context_logs WHERE processing_status = 'pending' LIMIT ?", limit)
+func (s *Store) GetPendingImages(limit int, maxTimestamp int64) ([]PendingImage, error) {
+    rows, err := s.DB.Query(`SELECT id, session_id, image_path 
+                            FROM context_logs 
+                            WHERE processing_status = 'pending' AND timestamp <= ? 
+                            LIMIT ?`, maxTimestamp, limit)
     if err != nil { return nil, err }
     defer rows.Close()
 
     var results []PendingImage
     for rows.Next() {
         var r PendingImage
-        if err := rows.Scan(&r.ID, r.SessionID, &r.Path); err != nil {
+        if err := rows.Scan(&r.ID, &r.SessionID, &r.Path); err != nil {
+            fmt.Printf("DB Scan Error: %v\n", err)
             continue
         }
         results = append(results, r)
@@ -157,16 +163,15 @@ func (s *Store) UpdateDescription(id int, description string) error {
 }
 
 // safely extend the current session and recording durations
-func (s *Store) UpdateSessionHeartbeat(sessionID int64, startTime time.Time) error {
-    now := time.Now()
-    durationSec := int(now.Sub(startTime).Seconds())
-    
+func (s *Store) UpdateSessionHeartbeat(sessionID int64, startTime time.Time, currentTime time.Time) error {
+    durationSec := int(currentTime.Sub(startTime).Seconds())
+
     // update the session's running duration
     _, err := s.DB.Exec(`
         UPDATE sessions 
         SET end_time = ?, duration_seconds = ? 
         WHERE id = ?`, 
-        now.Unix(), durationSec, sessionID)
+        currentTime.Unix(), durationSec, sessionID)
         
     if err != nil { return err }
     

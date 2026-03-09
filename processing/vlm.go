@@ -64,7 +64,6 @@ func (v *VLMClient) ShouldProcess(img image.Image) (bool, string) {
 	now := time.Now()
 
 	if !v.LastProcessTime.IsZero() && now.Sub(v.LastProcessTime) < 15*time.Second {
-		v.LastHash = newHash // keep updating baseline, but skip processing
 		return false, hashStr
     }
 
@@ -82,9 +81,9 @@ func (v *VLMClient) ShouldProcess(img image.Image) (bool, string) {
 }
 
 // BATCH PROCESSOR: runs periodically to process pending images
-func (v *VLMClient) RunBatch() {
+func (v *VLMClient) RunBatch(maxTimestamp int64) {
 	// check if there's enough work
-	pending, err := v.Store.GetPendingImages(18)
+	pending, err := v.Store.GetPendingImages(18, maxTimestamp)
 	if err != nil {
 		log.Printf("Error fetching pending images: %v", err)
 		return
@@ -113,11 +112,9 @@ func (v *VLMClient) RunBatch() {
 	// kill the server when this function exits
 	defer func() {
 		if cmd.Process != nil {
-			if err := cmd.Process.Kill(); err != nil {
-				log.Printf("Failed to kill VLM server: %v", err)
-			} else {
-				log.Println("VLM Batch Finished. Server stopped.")
-			}
+			cmd.Process.Kill()
+			cmd.Wait()
+			log.Println("VLM Batch Finished. Server stopped.")
 		}
 	}()
 
