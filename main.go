@@ -18,7 +18,7 @@ import (
 
 	"tavlio/dbase"
 	"tavlio/processing"
-	winTracking "tavlio/tracking/windows"
+	"tavlio/tracking"
 	"tavlio/video"
 )
 
@@ -74,16 +74,15 @@ func main() {
 		URL:              "/",
 	})
 
-	go func() {
-		for {
-			now := time.Now().Format(time.RFC1123)
-			app.Event.Emit("time", now)
-			time.Sleep(time.Second)
-		}
-	}()
+	err := app.Run()
 
-    db, e := dbase.NewStore("tracker.db")
-    if e != nil { panic(e) }
+	if err != nil {
+		log.Fatal(err)
+	}
+
+    /*
+    db, err := dbase.NewStore("tracker.db")
+    if err != nil { panic(err) }
 
     // clean up unneeded screenshots (both in db and local filesystem)
     db.MarkOrphansAsFailed()
@@ -92,26 +91,23 @@ func main() {
     os.MkdirAll("data/screenshots", 0755)
     os.MkdirAll("data/videos", 0755)
 
-	err := app.Run()
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
     go trackNrecord(db)
+    
+    select{}
+    */
 }
 
 // orchestrate all app modules to properly track and record the user's actions
 func trackNrecord(db *dbase.Store) {
     // start foreground app tracker + buffered channel so the callback doesn't block if slow
     appChangeChan := make(chan string, 5) 
-    go winTracking.StartForegroundTracker(appChangeChan)
+    go tracking.StartForegroundTracker(appChangeChan)
 
     vlm := &processing.VLMClient{Store: db}
 
 	// state Variables
     var (
-        currentApp     = winTracking.GetCurrentActiveApp()
+        currentApp     = tracking.GetCurrentActiveApp()
         sessionStart   = time.Now() 
         latestApp      = currentApp
         awaySince      time.Time
