@@ -3,6 +3,7 @@ package main
 import (
 	"embed"
 	_ "embed"
+	//"flag"
 	"fmt"
 	"image/jpeg"
 	"log"
@@ -49,11 +50,48 @@ func init() {
 // and starts a goroutine that emits a time-based event every second. It subsequently runs the application and
 // logs any error that might occur.
 func main() {
+
+    // ----- testing purposes area ----- 
+    fmt.Println(">> Resetting Database...")
+    os.Remove("tracker.db")
+    os.Remove("tracker.db-wal")
+    os.Remove("tracker.db-shm")
+    
+    // clean up screenshots/videos
+    os.RemoveAll("data/screenshots") 
+    os.RemoveAll("data/videos")
+    os.MkdirAll("data/screenshots", 0755)
+    os.MkdirAll("data/videos", 0755)
+    // ----- end of testing purposes area ----- 
+
+    db, e := dbase.NewStore("tracker.db")
+    if e != nil { panic(e) }
+
+    fmt.Println("Seeding database with mock data...")
+    if err := db.SeedMockData(); err != nil {
+        log.Fatalf("Failed to seed database: %v", err)
+    }
+    fmt.Println("Database seeded successfully!")
+	
+
+    // clean up unneeded screenshots (both in db and local filesystem)
+    db.MarkOrphansAsFailed()
+    cleanOrphanedScreenshots()
+
+    os.MkdirAll("data/screenshots", 0755)
+    os.MkdirAll("data/videos", 0755)
+
+    // start foreground app tracker + buffered channel so the callback doesn't block if slow
+    appChangeChan := make(chan string, 5) 
+    go tracking.StartForegroundTracker(appChangeChan)
+
+    go trackNrecord(db, appChangeChan)
+
 	app := application.New(application.Options{
-		Name:        "tavlio",
+		Name:        "Tavlio",
 		Description: "A cross-platform, fully local desktop app for tracking and displaying users' digital habits",
 		Services: []application.Service{
-			//application.NewService(),
+			application.NewService(db),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -79,30 +117,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
-    /*
-    db, err := dbase.NewStore("tracker.db")
-    if err != nil { panic(err) }
-
-    // clean up unneeded screenshots (both in db and local filesystem)
-    db.MarkOrphansAsFailed()
-    cleanOrphanedScreenshots()
-
-    os.MkdirAll("data/screenshots", 0755)
-    os.MkdirAll("data/videos", 0755)
-
-    go trackNrecord(db)
-    
-    select{}
-    */
 }
 
 // orchestrate all app modules to properly track and record the user's actions
-func trackNrecord(db *dbase.Store) {
-    // start foreground app tracker + buffered channel so the callback doesn't block if slow
-    appChangeChan := make(chan string, 5) 
-    go tracking.StartForegroundTracker(appChangeChan)
-
+func trackNrecord(db *dbase.Store, appChangeChan <-chan string) {
     vlm := &processing.VLMClient{Store: db}
 
 	// state Variables
