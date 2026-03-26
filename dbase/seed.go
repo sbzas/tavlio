@@ -21,9 +21,9 @@ var mockDescriptions = map[string][]string{
 	"Slack":         {"Replying to team channel", "Reading announcements", "Direct messaging a coworker"},
 }
 
-// SeedMockData fills the database with 14 days of realistic fake activity
+// Fill the database with "daysAgo" days of realistic fake activity
 func (s *Store) SeedMockData() error {
-	// 0. Safety Guard: Prevent seeding if data already exists
+	// Prevent seeding if data already exists
 	var count int
 	err := s.DB.QueryRow("SELECT COUNT(*) FROM sessions").Scan(&count)
 	if err != nil {
@@ -42,7 +42,7 @@ func (s *Store) SeedMockData() error {
 	// Rollback if something fails (does nothing if Commit is successful)
 	defer tx.Rollback()
 
-	// 1. Seed Apps
+	// seed db with app names
 	appIDs := make(map[string]int)
 	for _, appName := range mockApps {
 		_, err := tx.Exec("INSERT OR IGNORE INTO apps (name) VALUES (?)", appName)
@@ -59,27 +59,27 @@ func (s *Store) SeedMockData() error {
 		appIDs[appName] = int(id)
 	}
 
-	// 2. Seed Sessions and associated data for the last 14 days
+	// seed Sessions and associated data for the last "daysAgo" days
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	now := time.Now()
 
-	for daysAgo := 14; daysAgo >= 0; daysAgo-- {
+	for daysAgo := 21; daysAgo >= 0; daysAgo-- {
 		// Start day around 9:00 AM
 		dayStart := now.AddDate(0, 0, -daysAgo).Truncate(24 * time.Hour).Add(9 * time.Hour)
 		currentTime := dayStart.Unix()
 
-		// Generate 3 to 7 sessions per day
+		// 3 to 7 sessions per day
 		numSessions := rng.Intn(5) + 3
 
-		for i := 0; i < numSessions; i++ {
+		for range numSessions {
 			app := mockApps[rng.Intn(len(mockApps))]
 			appID := appIDs[app]
 
-			// Session duration: 15 mins to 2 hours
-			durationSecs := rng.Intn(7200) + 900
+			// 15 mins to 3 hours per session
+			durationSecs := rng.Intn(10800) + 900
 			endTime := currentTime + int64(durationSecs)
 
-			// Insert Session
+			// inser session and recording
 			res, err := tx.Exec(`
 				INSERT INTO sessions (app_id, start_time, end_time, duration_seconds) 
 				VALUES (?, ?, ?, ?)`,
@@ -90,7 +90,6 @@ func (s *Store) SeedMockData() error {
 			}
 			sessionID, _ := res.LastInsertId()
 
-			// Insert Recording
 			filePath := fmt.Sprintf("/videos/session_%d.mp4", sessionID)
 			keepForever := 0
 			if rng.Intn(2) == 1 { keepForever = 1 }
