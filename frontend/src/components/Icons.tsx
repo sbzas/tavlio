@@ -1,0 +1,43 @@
+import {
+  IconSearch,
+  IconSettings,
+  IconChevronRight,
+  IconChevronLeft,
+  IconPlus,
+  IconBolt,
+  IconLayoutDashboard,
+  IconArchive,
+  IconCalendar,
+  IconCircleFilled,
+  IconArrowLeft,
+  IconClock,
+  IconFolder,
+  IconFolderOpen,
+  IconCheck,
+  IconX,
+  IconAlertTriangle,
+  IconTrash,
+} from "@tabler/icons-react";
+
+type IconFn = (size?: number) => React.ReactElement;
+
+export const I: Record<string, IconFn> = {
+  search:     (s = 14) => <IconSearch            size={s} stroke={1.7} />,
+  settings:   (s = 13) => <IconSettings          size={s} stroke={1.7} />,
+  chevronR:   (s = 12) => <IconChevronRight      size={s} stroke={1.8} />,
+  chevronL:   (s = 12) => <IconChevronLeft       size={s} stroke={1.8} />,
+  plus:       (s = 12) => <IconPlus              size={s} stroke={1.8} />,
+  spark:      (s = 12) => <IconBolt              size={s} stroke={1.7} />,
+  dashboard:  (s = 15) => <IconLayoutDashboard   size={s} stroke={1.7} />,
+  archive:    (s = 15) => <IconArchive           size={s} stroke={1.7} />,
+  calendar:   (s = 15) => <IconCalendar          size={s} stroke={1.7} />,
+  dot:        (s = 7)  => <IconCircleFilled      size={s} />,
+  arrowL:     (s = 13) => <IconArrowLeft         size={s} stroke={1.8} />,
+  clock:      (s = 10) => <IconClock             size={s} stroke={1.8} />,
+  folder:     (s = 18) => <IconFolder            size={s} stroke={1.7} />,
+  folderOpen: (s = 18) => <IconFolderOpen        size={s} stroke={1.7} />,
+  check:      (s = 11) => <IconCheck             size={s} stroke={2.2} />,
+  x:          (s = 11) => <IconX                size={s} stroke={2.2} />,
+  warning:    (s = 11) => <IconAlertTriangle     size={s} stroke={1.8} />,
+  trash:      (s = 12) => <IconTrash             size={s} stroke={1.7} />,
+};
