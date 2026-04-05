@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { C, SANS, SERIF, TOOLTIP_STYLE } from "../theme";
+import { C, SANS, TOOLTIP_STYLE } from "../theme";
 
 export function Card({ children, wide = false, style = {} }: { children: React.ReactNode; wide?: boolean; style?: React.CSSProperties }) {
   const [hov, setHov] = useState(false);
@@ -32,7 +32,7 @@ export function CardLabel({ children }: { children: React.ReactNode }) {
 export function StatPill({ label, value }: { label: string; value: string }) {
   return (
     <div style={{ background: "rgba(107,94,82,0.10)", border: "1px solid rgba(107,94,82,0.20)", borderRadius: 999, padding: "6px 14px", display: "inline-flex", flexDirection: "column", alignItems: "center", gap: 1 }}>
-      <span style={{ fontFamily: SERIF, fontSize: 16, color: C.shadow, lineHeight: 1 }}>{value}</span>
+      <span style={{ fontFamily: SANS, fontSize: 14, color: C.shadow, lineHeight: 1 }}>{value}</span>
       <span style={{ fontFamily: SANS, fontSize: 9, color: C.umber, letterSpacing: "0.08em", textTransform: "uppercase" }}>{label}</span>
     </div>
   );

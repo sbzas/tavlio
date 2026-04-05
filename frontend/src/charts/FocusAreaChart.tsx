@@ -7,7 +7,7 @@ interface DailyFocus { Day: string; Hours: number; Sessions: number; }
 
 function fmt(mins: number) {
   const h = Math.floor(mins / 60), m = Math.round(mins % 60);
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  return h > 0 ? `${h}h ${m}min` : `${m}min`;
 }
 
 export function FocusAreaChart() {

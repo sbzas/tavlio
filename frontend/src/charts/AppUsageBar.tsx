@@ -51,9 +51,9 @@ export function AppUsageBar() {
             onMouseMove={s => setHovIdx(s?.activeTooltipIndex != null ? Number(s.activeTooltipIndex) : null)}
             onMouseLeave={() => setHovIdx(null)}
           >
-            <XAxis type="number" tick={AXIS_TICK} tickLine={false} axisLine={false} unit="m" />
+            <XAxis type="number" tick={AXIS_TICK} tickLine={false} axisLine={false} unit="min" />
             <YAxis type="category" dataKey="Name" tick={AXIS_TICK} tickLine={false} axisLine={false} width={58} />
-            <Tooltip content={<ChartTooltip unit=" min" />} cursor={false} />
+            <Tooltip content={<ChartTooltip unit="min" />} cursor={false} />
             <Bar dataKey="Minutes" name="Time" radius={[0, 4, 4, 0]}>
               {data.map((_, i) => (
                 <Cell
