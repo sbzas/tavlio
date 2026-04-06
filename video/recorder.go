@@ -46,6 +46,7 @@ func EncodeFromImages(imagePaths []string, outputPath string) error {
         "-i", listPath, 
         "-r", "1", 
         "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "24", "-preset", "ultrafast", 
+        "-movflags", "+faststart",
         outputPath,
     )
 

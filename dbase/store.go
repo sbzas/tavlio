@@ -209,3 +209,27 @@ func (s *Store) MarkOrphansAsFailed() error {
         
     return err
 }
+
+// Update the keep_forever flag for a specific session's recording, allowing for both keeping and releasing said control flag
+func (s *Store) SetRecordingKeepStatus(sessionID int64, keep bool) error {
+	// sqlite booleans are 0 or 1
+	keepVal := 0
+	if keep {
+		keepVal = 1
+	}
+
+	query := `UPDATE recordings SET keep_forever = ? WHERE session_id = ?`
+	
+	result, err := s.DB.Exec(query, keepVal, sessionID)
+	if err != nil {
+		return fmt.Errorf("failed to update keep status for session %d: %w", sessionID, err)
+	}
+
+	// verify that a row was actually updated
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		return fmt.Errorf("no recording found for session %d", sessionID)
+	}
+
+	return nil
+}
