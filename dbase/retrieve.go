@@ -113,13 +113,14 @@ func (s *Store) GetSessionsForDay(dateISO string) ([]SessionRow, error) {
 	return results, rows.Err()
 }
 
-// Return the VLM-generated descriptions from context_logs for a given session, in chronological order
+// Return the VLM-generated descriptions from context_logs for a given session, unique and in chronological order
 func (s *Store) GetSessionSummary(sessionID int) ([]string, error) {
 	const q = `
 		SELECT description
 		FROM context_logs
 		WHERE session_id = ? AND processing_status = 'processed' AND description IS NOT NULL
-		ORDER BY timestamp`
+		GROUP BY description
+		ORDER BY MIN(timestamp)`
 
 	rows, err := s.DB.Query(q, sessionID)
 	if err != nil {
@@ -412,6 +413,7 @@ func (s *Store) GetRecentLogs(limit int) ([]RecentLog, error) {
 		FROM context_logs cl
 		JOIN sessions  s  ON s.id  = cl.session_id
 		JOIN apps      a  ON a.id  = s.app_id
+		GROUP BY description
 		ORDER BY cl.timestamp DESC
 		LIMIT ?`
 
