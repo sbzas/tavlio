@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { C } from "../../theme";
+import { C, SANS } from "../../theme";
 import type { CalEvent } from "../../types";
 import { MATCH_STYLE, S, minsToY, minsToH, minsToLabel } from "./CalendarUtils";
 
-export function CalBlock({ ev, col, selected, onClick }: {
-  ev: CalEvent; col: "intended" | "actual"; selected: boolean; onClick?: () => void;
+export function CalBlock({ ev, col, selected, onClick, hiddenCount = 0 }: {
+  ev: CalEvent; col: "intended" | "actual"; selected: boolean; onClick?: () => void; hiddenCount?: number;
 }) {
   const [hov, setHov] = useState(false);
   const ms  = ev.match ? MATCH_STYLE[ev.match] : null;
@@ -33,10 +33,22 @@ export function CalBlock({ ev, col, selected, onClick }: {
           : hov ? "0 2px 10px rgba(107,94,82,0.14)" : "none",
       }}
     >
-      <div style={{ ...S.row, gap: 4 }}>
+    <div style={{ ...S.row, gap: 4, flexWrap: "wrap" }}>
         {col === "actual" && ms && ms.icon()}
         <span style={S.label}>{ev.label}</span>
+        
+        {/* render the +X pill if there are overlapping shorter sessions */}
+        {hiddenCount > 0 && (
+          <span style={{
+            fontFamily: SANS, fontSize: 9, fontWeight: 600,
+            background: "rgba(107,94,82,0.15)", color: C.umber,
+            padding: "1px 4px", borderRadius: 4, marginLeft: 2
+          }}>
+            +{hiddenCount} apps
+          </span>
+        )}
       </div>
+      
       {h > 28 && <div style={S.subLabel}>{minsToLabel(ev.start)} – {minsToLabel(ev.end)}</div>}
     </div>
   );

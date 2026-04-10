@@ -8,7 +8,7 @@ import { I } from "../../components/Icons";
 // Internal Calendar Components
 import { CalBlock, IntendedGhost } from "./CalBlocks";
 import { SessionDetail } from "./SessionDetail";
-import { ALL_HOURS, HOUR_H, GRID_H, TOTAL_H, MATCH_STYLE, S, minsToY, minsToH } from "./CalendarUtils";
+import { ALL_HOURS, HOUR_H, GRID_H, TOTAL_H, MATCH_STYLE, S, minsToY, minsToH, groupOverlappingSessions } from "./CalendarUtils";
 
 const todayPill = (active: boolean): React.CSSProperties => ({
   fontFamily: SANS, fontSize: 11,
@@ -59,6 +59,8 @@ export function CalendarView() {
   const alignedMins  = actual.filter(e => e.match === "aligned").reduce((s, e) => s + (e.end - e.start), 0);
   const score        = intendedMins > 0 ? Math.round((alignedMins / intendedMins) * 100) : 0;
   const trackedMins  = actual.reduce((s, e) => s + (e.end - e.start), 0);
+  // group overlapping sessions before rendering
+  const clusteredActual = groupOverlappingSessions(actual);
 
   const goDay   = (delta: number) => setDayOffset(o => o + delta);
   const goToday = () => setDayOffset(0);
@@ -198,13 +200,27 @@ export function CalendarView() {
                 </div>
               )}
 
-              {actual.map(ev => (
-                <CalBlock
-                  key={ev.id} ev={ev} col="actual"
-                  selected={selectedSession?.id === ev.id}
-                  onClick={() => setSelectedSession(selectedSession?.id === ev.id ? null : ev)}
-                />
-              ))}
+                {clusteredActual.map(group => {
+                  // first item is our primary session (the longest one starting earliest)
+                  const primaryEv = group[0];
+                  const hiddenCount = group.length - 1;
+                  
+                  // merge boundaries so the cal block stretches to cover the entire cluster's time span
+                  const clusterStart = Math.min(...group.map(e => e.start));
+                  const clusterEnd = Math.max(...group.map(e => e.end));
+                  const displayEv = { ...primaryEv, start: clusterStart, end: clusterEnd };
+
+                  return (
+                    <CalBlock
+                      key={primaryEv.id} 
+                      ev={displayEv} 
+                      col="actual"
+                      selected={selectedSession?.id === primaryEv.id}
+                      onClick={() => setSelectedSession(selectedSession?.id === primaryEv.id ? null : primaryEv)}
+                      hiddenCount={hiddenCount} 
+                    />
+                  );
+                })}
             </div>
           </div>
         </div>

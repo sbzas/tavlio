@@ -1,5 +1,6 @@
 import { C, SANS } from "../../theme";
 import { I } from "../../components/Icons";
+import type { CalEvent } from "../../types";
 
 export const ALL_HOURS = Array.from({ length: 24 }, (_, i) => i); // 00:00–23:00
 export const HOUR_H    = 52;
@@ -33,4 +34,37 @@ export function minsToH(start: number, end: number) { return Math.max(((end - st
 export function minsToLabel(mins: number) {
   const h = Math.floor(mins / 60), m = mins % 60;
   return `${h % 12 === 0 ? 12 : h % 12}:${m.toString().padStart(2, "0")} ${h < 12 ? "am" : "pm"}`;
+}
+
+export function groupOverlappingSessions(sessions: CalEvent[]): CalEvent[][] {
+  if (sessions.length === 0) return [];
+
+  // Sort primarily by start time, longer sessions first so that cal blocks have the proper size
+  const sorted = [...sessions].sort((a, b) => {
+    if (a.start === b.start) {
+      return (b.end - b.start) - (a.end - a.start);
+    }
+    return a.start - b.start;
+  });
+
+  const groups: CalEvent[][] = [];
+  let currentGroup: CalEvent[] = [sorted[0]];
+  let groupEnd = sorted[0].end;
+
+  for (let i = 1; i < sorted.length; i++) {
+    const ev = sorted[i];
+    if (ev.start < groupEnd) {
+      currentGroup.push(ev);
+      // Extend the group's bounding box if this overlapping event stretches further
+      groupEnd = Math.max(groupEnd, ev.end); 
+    } else {
+      // no overlap
+      groups.push(currentGroup);
+      currentGroup = [ev];
+      groupEnd = ev.end;
+    }
+  }
+  groups.push(currentGroup);
+
+  return groups;
 }
