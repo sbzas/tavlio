@@ -74,6 +74,10 @@ func (s *Store) createSchema() error {
         keep_forever BOOLEAN DEFAULT 0,
         created_at INTEGER DEFAULT (unixepoch())
     );
+    CREATE TABLE IF NOT EXISTS user_preferences (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+    );
     CREATE VIRTUAL TABLE IF NOT EXISTS context_search USING fts5(
         description, 
         content='context_logs', 
@@ -232,4 +236,13 @@ func (s *Store) SetRecordingKeepStatus(sessionID int64, keep bool) error {
 	}
 
 	return nil
+}
+
+func (s *Store) SaveDashboardState(stateJSON string) error {
+    _, err := s.DB.Exec(`
+        INSERT INTO user_preferences (key, value) 
+        VALUES ('dashboard_state', ?) 
+        ON CONFLICT(key) DO UPDATE SET value = ?
+    `, stateJSON, stateJSON)
+    return err
 }

@@ -485,3 +485,13 @@ func formatRelative(d time.Duration) string {
 		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
 	}
 }
+
+func (s *Store) GetDashboardState() (string, error) {
+    var value string
+    err := s.DB.QueryRow("SELECT value FROM user_preferences WHERE key = 'dashboard_state'").Scan(&value)
+    if err != nil {
+        // return empty string if no state is found (frontend handles defaults)
+        return "", nil 
+    }
+    return value, nil
+}
