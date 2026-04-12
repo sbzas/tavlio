@@ -3,18 +3,30 @@ import { C, SANS, SERIF } from "../theme";
 import { Card, CardLabel, EmptyChart } from "../components/Primitives";
 import { I } from "../components/Icons";
 
+import { GetRecentLogs } from "../../bindings/tavlio/dbase/store";
+
 interface RecentLog { App: string; Desc: string; Time: string; Status: string; }
 
 export function RecentLogs() {
   const [logs, setLogs]       = useState<RecentLog[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // safe async fetching
   useEffect(() => {
-    import("../../bindings/tavlio/dbase/store")
-      .then(m => m.GetRecentLogs(10))
-      .then(rows => setLogs(rows ?? []))
-      .catch(() => setLogs([]))
-      .finally(() => setLoading(false));
+    let isMounted = true;
+
+    GetRecentLogs(10)
+      .then(rows => {
+        if (isMounted) setLogs(rows ?? []);
+      })
+      .catch(() => {
+        if (isMounted) setLogs([]);
+      })
+      .finally(() => {
+        if (isMounted) setLoading(false);
+      });
+
+    return () => { isMounted = false; };
   }, []);
 
   const isEmpty = !loading && logs.length === 0;
@@ -28,7 +40,14 @@ export function RecentLogs() {
       ) : isEmpty ? (
         <EmptyChart height={120} message="Snapshots will appear here as Tavlio runs in the background" />
       ) : (
-        <div style={{ display: "flex", flexDirection: "column" }}>
+        // create a scrolling container
+        <div style={{ 
+          display: "flex", 
+          flexDirection: "column",
+          maxHeight: "360px", 
+          overflowY: "auto",
+          paddingRight: 8 // Keeps scrollbar off the text
+        }}>
           {logs.map((log, i) => (
             <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "9px 0", borderBottom: i < logs.length - 1 ? "1px solid rgba(107,94,82,0.1)" : "none" }}>
               <div style={{ width: 30, height: 30, borderRadius: 8, background: "rgba(107,94,82,0.14)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>

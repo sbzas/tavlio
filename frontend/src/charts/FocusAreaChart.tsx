@@ -3,6 +3,8 @@ import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 import { C, CHART_STYLE, AXIS_TICK, GRID_PROPS } from "../theme";
 import { Card, CardLabel, StatPill, ChartTooltip, EmptyChart } from "../components/Primitives";
 
+import { GetDailyFocus } from "../../bindings/tavlio/dbase/store";
+
 interface DailyFocus { Day: string; Hours: number; Sessions: number; }
 
 function fmt(mins: number) {
@@ -15,11 +17,20 @@ export function FocusAreaChart() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    import("../../bindings/tavlio/dbase/store")
-      .then(m => m.GetDailyFocus(14))
-      .then(rows => setData(rows ?? []))
-      .catch(() => setData([]))
-      .finally(() => setLoading(false));
+    let isMounted = true;
+
+    GetDailyFocus(14)
+      .then(rows => {
+        if (isMounted) setData(rows ?? []);
+      })
+      .catch(() => {
+        if (isMounted) setData([]);
+      })
+      .finally(() => {
+        if (isMounted) setLoading(false);
+      });
+
+    return () => { isMounted = false; };
   }, []);
 
   const totalMinsToday = data.length

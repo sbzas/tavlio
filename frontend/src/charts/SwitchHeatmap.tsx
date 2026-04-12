@@ -12,12 +12,15 @@ export function SwitchHeatmap() {
   const [hovIdx, setHovIdx]   = useState<number | null>(null);
 
   useEffect(() => {
+    let isMounted = true;
     const dateISO = new Date().toISOString().slice(0, 10);
     
     GetContextSwitchesByHour(dateISO)
-      .then(rows =>  setData(rows ?? []))
-      .finally(() => setLoading(false));
+      .then(rows => { if (isMounted) setData(rows ?? []); })
+      .catch(() => { if (isMounted) setData([]); })
+      .finally(() => { if (isMounted) setLoading(false); });
       
+    return () => { isMounted = false; };
   }, []);
 
   const fullDay = Array.from({ length: 24 }, (_, i) => {

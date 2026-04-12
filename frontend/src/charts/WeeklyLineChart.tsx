@@ -3,6 +3,8 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 import { C, SANS, CHART_STYLE, AXIS_TICK, GRID_PROPS } from "../theme";
 import { Card, CardLabel, ChartTooltip, EmptyChart } from "../components/Primitives";
 
+import { GetWeeklyTotals } from "../../bindings/tavlio/dbase/store";
+
 interface WeekPoint { Week: string; thisYear: number; lastYear: number; }
 
 export function WeeklyLineChart() {
@@ -10,13 +12,16 @@ export function WeeklyLineChart() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let isMounted = true;
+
     const now      = new Date();
     const thisYear = now.getFullYear();
     const lastYear = thisYear - 1;
 
-    import("../../bindings/tavlio/dbase/store")
-      .then(m => Promise.all([m.GetWeeklyTotals(thisYear), m.GetWeeklyTotals(lastYear)]))
+    Promise.all([GetWeeklyTotals(thisYear), GetWeeklyTotals(lastYear)])
       .then(([thisRows, lastRows]) => {
+        if (!isMounted) return;
+        
         // Merge by week label (both arrays are W1…Wn with the same indexing)
         const merged: WeekPoint[] = (thisRows ?? []).map((t, i) => ({
           Week:     t.Week,
@@ -25,8 +30,14 @@ export function WeeklyLineChart() {
         }));
         setData(merged);
       })
-      .catch(() => setData([]))
-      .finally(() => setLoading(false));
+      .catch(() => {
+        if (isMounted) setData([]);
+      })
+      .finally(() => {
+        if (isMounted) setLoading(false);
+      });
+
+    return () => { isMounted = false; };
   }, []);
 
   const hasThisYear = data.some(d => d.thisYear > 0);
