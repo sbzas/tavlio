@@ -7,7 +7,7 @@ import { SearchBar }  from "./components/SearchBar";
 import { NavDock }    from "./components/NavDock";
 import { AIModal }    from "./components/AIModal";
 import { Divider }    from "./components/Primitives";
-import { DashboardView } from "./views/DashboardView";
+import { DashboardView } from "./views/Dashboard/DashboardView";
 import { ArchivesView }  from "./views/ArchivesView";
 import { AppDetailView } from "./views/AppDetailView";
 import { CalendarView }  from "./views/Calendar/CalendarView";
