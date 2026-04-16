@@ -11,6 +11,7 @@ import { DashboardView } from "./views/Dashboard/DashboardView";
 import { ArchivesView }  from "./views/ArchivesView";
 import { AppDetailView } from "./views/AppDetailView";
 import { CalendarView }  from "./views/Calendar/CalendarView";
+import { I } from "./components/Icons";
 
 export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -74,6 +75,32 @@ export default function App() {
           style={{ position: "fixed", inset: 0, zIndex: 99, backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)" }}
         />
       )}
+
+      {/* handle for indicating there's something at the left of the screen (the sidebar) */}
+      <div
+        style={{
+          position: "fixed", 
+          top: "50%", 
+          left: sidebarOpen ? SIDEBAR_W : 0, 
+          transform: "translateY(-50%)",
+          width: 20, 
+          height: 48,
+          background: C.sidebar, 
+          border: `1px solid ${C.border}`,
+          borderLeft: "none", // Blends seamlessly into the sidebar's right border
+          borderRadius: "0 6px 6px 0",
+          display: "flex", 
+          justifyContent: "center", 
+          alignItems: "center",
+          zIndex: 105, // Sits just above the sidebar (zIndex 100)
+          color: C.umber, 
+          transition: "left 0.28s cubic-bezier(.4,0,.2,1)", 
+          pointerEvents: "none",
+          boxShadow: "2px 0 8px rgba(107,94,82,0.06)" 
+        }}
+      >
+        {I.dotsV(16)}
+      </div>
 
       {/* hover driven sidebar */}
       <Sidebar
