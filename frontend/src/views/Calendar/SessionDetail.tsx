@@ -5,7 +5,6 @@ import { I } from "../../components/Icons";
 import { fmt } from "../../mockConfig";
 import { MATCH_STYLE, S, minsToLabel } from "./CalendarUtils";
 
-// Explicit imports for your backend bindings
 import { 
   GetRecordingForSession, 
   SetRecordingKeepStatus, 
@@ -24,11 +23,9 @@ const iconBtn: React.CSSProperties = {
   color: C.umber, cursor: "pointer", display: "flex", alignItems: "center",
 };
 
-// Private component scoped to SessionDetail
 function VideoPlayer({ ev }: { ev: CalEvent }) {
   const [meta, setMeta] = useState<RecordingMeta | null | "none">(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
-  
   const [retentionDays, setRetentionDays] = useState<number>(3); 
 
   // Listen for live updates from the Sidebar
@@ -38,7 +35,7 @@ function VideoPlayer({ ev }: { ev: CalEvent }) {
         setRetentionDays(e.detail);
       }
     };
-    
+
     window.addEventListener("retentionChanged", handleRetentionUpdate);
     return () => window.removeEventListener("retentionChanged", handleRetentionUpdate);
   }, []);
@@ -47,13 +44,18 @@ function VideoPlayer({ ev }: { ev: CalEvent }) {
   useEffect(() => {
     if (ev.dbID == null) { setMeta("none"); return; }
     
+    let isMounted = true;
+    
     Promise.all([
       GetRecordingForSession(ev.dbID).catch(() => null),
-      GetVideoRetentionLimit("video_retention_days", 3).catch(() => 3) // Default to 3
+      GetVideoRetentionLimit("video_retention_days", 3).catch(() => 3)
     ]).then(([r, days]) => {
+      if (!isMounted) return; // Check before updating
       setRetentionDays(days);
       setMeta(r ? { durationSeconds: r.DurationSeconds, createdAt: r.CreatedAt, keepForever: r.KeepForever } : "none");
     });
+
+    return () => { isMounted = false; }; // cleanup
   }, [ev.dbID]);
 
   const placeholder = (msg: string) => (
@@ -76,10 +78,10 @@ function VideoPlayer({ ev }: { ev: CalEvent }) {
   const toggleKeepStatus = async () => {
     if (ev.dbID == null) return;
     const targetState = !meta.keepForever;
-    
+
     try {
       await SetRecordingKeepStatus(ev.dbID, targetState);
-      
+
       setMeta({ ...meta, keepForever: targetState }); 
       setStatusMsg(targetState ? "Saved permanently" : "Auto-delete restored");
       setTimeout(() => setStatusMsg(null), 3000); 
@@ -103,12 +105,7 @@ function VideoPlayer({ ev }: { ev: CalEvent }) {
         </div>
         <button
           onClick={toggleKeepStatus}
-          style={{ 
-            fontFamily: SANS, fontSize: 10, 
-            background: meta.keepForever ? (C.sienna || "#eee") : "transparent", 
-            border: "1px solid " + C.border, borderRadius: 6, padding: "3px 10px", 
-            color: meta.keepForever ? C.highlight : C.umber, cursor: "pointer", transition: "all 0.2s ease"
-          }}
+          style={{ fontFamily: SANS, fontSize: 10, background: meta.keepForever ? (C.sienna || "#eee") : "transparent", border: "1px solid " + C.border, borderRadius: 6, padding: "3px 10px", color: meta.keepForever ? C.highlight : C.umber, cursor: "pointer", transition: "all 0.2s ease" }}
         >
           {meta.keepForever ? "Undo Keep" : "Keep forever"}
         </button>
@@ -128,10 +125,20 @@ export function SessionDetail({ ev, onClose }: { ev: CalEvent; onClose: () => vo
       return;
     }
     
+    let isMounted = true; 
+
     GetSessionSummary(ev.dbID)
-      .then(lines => setSummaryLines(lines?.length ? lines : ["No processed snapshots yet for this session."]))
-      .catch(() => setSummaryLines(["Could not load session summary."]))
-      .finally(() => setSummaryLoading(false));
+      .then(lines => {
+        if (isMounted) setSummaryLines(lines?.length ? lines : ["No processed snapshots yet for this session."]);
+      })
+      .catch(() => {
+        if (isMounted) setSummaryLines(["Could not load session summary."]);
+      })
+      .finally(() => {
+        if (isMounted) setSummaryLoading(false);
+      });
+
+    return () => { isMounted = false; }; 
   }, [ev.dbID]);
 
   useEffect(() => {

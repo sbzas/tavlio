@@ -29,22 +29,24 @@ interface SidebarProps {
 
 export function Sidebar({ open, onOpen, onClose }: SidebarProps) {
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  
+
   // Use string state to allow temporary empty values while typing
-  const [inputValue, setInputValue] = useState<string>("30");
+  const [inputValue, setInputValue] = useState<string>("3");
 
   useEffect(() => {
+    let isMounted = true; // <-- Added safety flag
+
     GetVideoRetentionLimit("video_retention_days", 3)
-      .then((days: number) => setInputValue(days.toString()))
+      .then((days: number) => {
+        if (isMounted) setInputValue(days.toString());
+      })
       .catch((err: any) => console.error("Failed to load retention preference:", err));
+
+    return () => { isMounted = false; }; // <-- Cleanup
   }, []);
 
-  const scheduleClose = () => {
-    closeTimer.current = setTimeout(onClose, 220);
-  };
-  const cancelClose = () => {
-    if (closeTimer.current) clearTimeout(closeTimer.current);
-  };
+  const scheduleClose = () => { closeTimer.current = setTimeout(onClose, 220); };
+  const cancelClose = () => { if (closeTimer.current) clearTimeout(closeTimer.current); };
 
   const saveRetentionPreference = useCallback((value: number) => {
     SetVideoRetentionLimit("video_retention_days", value.toString())
@@ -64,7 +66,7 @@ export function Sidebar({ open, onOpen, onClose }: SidebarProps) {
   // Validates and saves when the user clicks away from the input
   const handleRetentionBlur = () => {
     let val = parseInt(inputValue, 10);
-    if (isNaN(val) || val < 1) val = 1; // Fallback to 1 if empty or invalid
+    if (isNaN(val) || val < 1) val = 1; 
     setInputValue(val.toString());
     saveRetentionPreference(val);
   };
@@ -80,6 +82,19 @@ export function Sidebar({ open, onOpen, onClose }: SidebarProps) {
 
   return (
     <>
+    <div 
+      style={{ 
+        position: "fixed", top: 0, left: 0, bottom: 0, width: 24, zIndex: 110 }} 
+        onMouseEnter={() => { cancelClose(); onOpen(); }} 
+        onMouseLeave={scheduleClose} 
+    />
+    <div 
+      style={{ 
+        position: "fixed", top: 0, left: 0, bottom: 0, width: open ? SIDEBAR_W : 0, zIndex: 100, 
+        overflow: "hidden", transition: "width 0.28s cubic-bezier(.4,0,.2,1)" }} 
+        onMouseEnter={() => { cancelClose(); onOpen(); }} 
+        onMouseLeave={scheduleClose} 
+    />
       <div
         style={{
           position: "fixed", top: 0, left: 0, bottom: 0, width: 24, 
