@@ -281,3 +281,32 @@ func cleanOrphanedScreenshots() {
 func generateTempVideoPath() string {
     return filepath.Join("data/videos", fmt.Sprintf("chunk_%d.mp4", time.Now().UnixNano()))
 }
+
+func cleanExpiredVideos(db *dbase.Store) {
+	retentionDays := db.GetVideoRetentionLimit("video_retention_days", 3)
+	
+    // allow for auto-delete disabling
+	if retentionDays <= 0 {
+		return 
+	}
+
+	cutoff := time.Now().Add(-time.Duration(retentionDays) * 24 * time.Hour).Unix()
+
+	expired, err := db.GetExpiredRecordings(cutoff)
+	if err != nil {
+		fmt.Printf("\nError fetching expired videos: %v\n", err)
+		return
+	}
+
+	for _, video := range expired {
+		/// delete from local filesystem
+		err := os.Remove(video.Path)
+		if err != nil && !os.IsNotExist(err) {
+			fmt.Printf("Failed to delete video file %s: %v\n", video.Path, err)
+			continue // skip DB deletion if file deletion failed
+		}
+
+		db.DeleteRecording(video.ID)
+		fmt.Printf("Deleted expired video: %s\n", video.Path)
+	}
+}

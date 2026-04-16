@@ -57,6 +57,11 @@ type RecentLog struct {
 	Status string
 }
 
+type ExpiredVideo struct {
+	ID   int
+	Path string
+}
+
 // Return all sessions that overlap with the given calendar date (UTC)
 func (s *Store) GetSessionsForDay(dateISO string) ([]SessionRow, error) {
 	// Parse the date and compute the Unix range for the full day (local time)
@@ -494,4 +499,40 @@ func (s *Store) GetDashboardState() (string, error) {
         return "", nil 
     }
     return value, nil
+}
+
+// get automatic video retention time limit or default to standard  limit
+func (s *Store) GetVideoRetentionLimit(key string, defaultLimit int) int {
+	var val int
+	err := s.DB.QueryRow("SELECT CAST(value AS INTEGER) FROM user_preferences WHERE key = ?", key).Scan(&val)
+	if err != nil {
+		return defaultLimit
+	}
+
+	return val
+}
+
+// Find recordings past the cutoff date that are NOT marked to be kept forever
+func (s *Store) GetExpiredRecordings(cutoffUnix int64) ([]ExpiredVideo, error) {
+	rows, err := s.DB.Query(`
+		SELECT id, file_path 
+		FROM recordings 
+		WHERE keep_forever = 0 AND created_at < ?
+	`, cutoffUnix)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	var results []ExpiredVideo
+	for rows.Next() {
+		var v ExpiredVideo
+		if err := rows.Scan(&v.ID, &v.Path); err == nil {
+			results = append(results, v)
+		}
+	}
+
+	return results, nil
 }

@@ -246,3 +246,19 @@ func (s *Store) SaveDashboardState(stateJSON string) error {
     `, stateJSON, stateJSON)
     return err
 }
+
+func (s *Store) SetVideoRetentionLimit(key string, value string) error {
+	_, err := s.DB.Exec(`
+        INSERT INTO user_preferences (key, value) 
+        VALUES (?, ?) 
+        ON CONFLICT(key) DO UPDATE SET value = ?
+    `, key, value, value)
+
+	return err
+}
+
+func (s *Store) DeleteRecording(id int) error {
+	_, err := s.DB.Exec(`DELETE FROM recordings WHERE id = ?`, id)
+
+	return err
+}
