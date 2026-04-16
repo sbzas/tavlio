@@ -48,6 +48,10 @@ export function Sidebar({ open, onOpen, onClose }: SidebarProps) {
 
   const saveRetentionPreference = useCallback((value: number) => {
     SetVideoRetentionLimit("video_retention_days", value.toString())
+      .then(() => {
+        // Broadcast the change to the rest of the app
+        window.dispatchEvent(new CustomEvent("retentionChanged", { detail: value }));
+      })
       .catch((err: any) => console.error("Failed to save preference:", err));
   }, []);
 

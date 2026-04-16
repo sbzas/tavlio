@@ -5,6 +5,14 @@ import { I } from "../../components/Icons";
 import { fmt } from "../../mockConfig";
 import { MATCH_STYLE, S, minsToLabel } from "./CalendarUtils";
 
+// Explicit imports for your backend bindings
+import { 
+  GetRecordingForSession, 
+  SetRecordingKeepStatus, 
+  GetSessionSummary,
+  GetVideoRetentionLimit 
+} from "../../../bindings/tavlio/dbase/store";
+
 interface RecordingMeta {
   durationSeconds: number;
   createdAt:       string;
@@ -20,16 +28,32 @@ const iconBtn: React.CSSProperties = {
 function VideoPlayer({ ev }: { ev: CalEvent }) {
   const [meta, setMeta] = useState<RecordingMeta | null | "none">(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  
+  const [retentionDays, setRetentionDays] = useState<number>(3); 
 
+  // Listen for live updates from the Sidebar
+  useEffect(() => {
+    const handleRetentionUpdate = (e: any) => {
+      if (e.detail && typeof e.detail === 'number') {
+        setRetentionDays(e.detail);
+      }
+    };
+    
+    window.addEventListener("retentionChanged", handleRetentionUpdate);
+    return () => window.removeEventListener("retentionChanged", handleRetentionUpdate);
+  }, []);
+
+  // Fetch initial data on mount
   useEffect(() => {
     if (ev.dbID == null) { setMeta("none"); return; }
-    import("../../../bindings/tavlio/dbase/store")
-      .then(m => m.GetRecordingForSession(ev.dbID!))
-      .then(r => setMeta(r
-        ? { durationSeconds: r.DurationSeconds, createdAt: r.CreatedAt, keepForever: r.KeepForever }
-        : "none"
-      ))
-      .catch(() => setMeta("none"));
+    
+    Promise.all([
+      GetRecordingForSession(ev.dbID).catch(() => null),
+      GetVideoRetentionLimit("video_retention_days", 3).catch(() => 3) // Default to 3
+    ]).then(([r, days]) => {
+      setRetentionDays(days);
+      setMeta(r ? { durationSeconds: r.DurationSeconds, createdAt: r.CreatedAt, keepForever: r.KeepForever } : "none");
+    });
   }, [ev.dbID]);
 
   const placeholder = (msg: string) => (
@@ -43,27 +67,27 @@ function VideoPlayer({ ev }: { ev: CalEvent }) {
 
   const src = `/recording/${ev.dbID}`;
 
+  // Calculate days remaining using the dynamic state variable
   const autoDeleteDays = meta.keepForever ? null : (() => {
-    const deletesAt = new Date(new Date(meta.createdAt).getTime() + 7 * 24 * 60 * 60 * 1000);
+    const deletesAt = new Date(new Date(meta.createdAt).getTime() + retentionDays * 24 * 60 * 60 * 1000);
     return Math.max(0, Math.ceil((deletesAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
   })();
 
-  const toggleKeepStatus = () => {
+  const toggleKeepStatus = async () => {
     if (ev.dbID == null) return;
     const targetState = !meta.keepForever;
     
-    import("../../../bindings/tavlio/dbase/store")
-      .then(m => (m as any).SetRecordingKeepStatus?.(ev.dbID!, targetState))
-      .then(() => { 
-        setMeta({ ...meta, keepForever: targetState }); 
-        setStatusMsg(targetState ? "Saved permanently" : "Auto-delete restored");
-        setTimeout(() => setStatusMsg(null), 3000); 
-      })
-      .catch(err => {
-        console.error("Failed to update keep status:", err);
-        setStatusMsg("Error updating");
-        setTimeout(() => setStatusMsg(null), 3000);
-      });
+    try {
+      await SetRecordingKeepStatus(ev.dbID, targetState);
+      
+      setMeta({ ...meta, keepForever: targetState }); 
+      setStatusMsg(targetState ? "Saved permanently" : "Auto-delete restored");
+      setTimeout(() => setStatusMsg(null), 3000); 
+    } catch (err) {
+      console.error("Failed to update keep status:", err);
+      setStatusMsg("Error updating");
+      setTimeout(() => setStatusMsg(null), 3000);
+    }
   };
 
   return (
@@ -103,8 +127,8 @@ export function SessionDetail({ ev, onClose }: { ev: CalEvent; onClose: () => vo
       setSummaryLoading(false);
       return;
     }
-    import("../../../bindings/tavlio/dbase/store")
-      .then(m => m.GetSessionSummary(ev.dbID!))
+    
+    GetSessionSummary(ev.dbID)
       .then(lines => setSummaryLines(lines?.length ? lines : ["No processed snapshots yet for this session."]))
       .catch(() => setSummaryLines(["Could not load session summary."]))
       .finally(() => setSummaryLoading(false));
