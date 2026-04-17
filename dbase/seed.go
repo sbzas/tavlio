@@ -63,7 +63,7 @@ func (s *Store) SeedMockData() error {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	now := time.Now()
 
-	for daysAgo := 21; daysAgo >= 0; daysAgo-- {
+	for daysAgo := 365; daysAgo >= 0; daysAgo-- {
 		// Start day around 9:00 AM
 		dayStart := now.AddDate(0, 0, -daysAgo).Truncate(24 * time.Hour).Add(9 * time.Hour)
 		currentTime := dayStart.Unix()
@@ -90,7 +90,7 @@ func (s *Store) SeedMockData() error {
 			}
 			sessionID, _ := res.LastInsertId()
 
-			filePath := fmt.Sprintf("/videos/session_%d.mp4", sessionID)
+			filePath := "./test_data/videos/test_video.mp4"
 			keepForever := 0
 			if rng.Intn(2) == 1 { keepForever = 1 }
 			

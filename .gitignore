@@ -9,3 +9,6 @@ build/docker
 build/ios
 build/linux/appimage/build
 build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
+*.db*
+data/
+test_data
