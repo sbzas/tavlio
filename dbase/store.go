@@ -247,7 +247,7 @@ func (s *Store) SaveDashboardState(stateJSON string) error {
     return err
 }
 
-func (s *Store) SetVideoRetentionLimit(key string, value string) error {
+func (s *Store) SetUserPreference(key string, value string) error {
 	_, err := s.DB.Exec(`
         INSERT INTO user_preferences (key, value) 
         VALUES (?, ?) 

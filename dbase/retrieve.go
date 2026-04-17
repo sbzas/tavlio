@@ -491,16 +491,6 @@ func formatRelative(d time.Duration) string {
 	}
 }
 
-func (s *Store) GetDashboardState() (string, error) {
-    var value string
-    err := s.DB.QueryRow("SELECT value FROM user_preferences WHERE key = 'dashboard_state'").Scan(&value)
-    if err != nil {
-        // return empty string if no state is found (frontend handles defaults)
-        return "", nil 
-    }
-    return value, nil
-}
-
 // get automatic video retention time limit or default to standard  limit
 func (s *Store) GetVideoRetentionLimit(key string, defaultLimit int) int {
 	var val int
@@ -535,4 +525,13 @@ func (s *Store) GetExpiredRecordings(cutoffUnix int64) ([]ExpiredVideo, error) {
 	}
 
 	return results, nil
+}
+
+func (s *Store) GetUserPreference(key string, defaultValue string) string {
+    var value string
+    err := s.DB.QueryRow("SELECT value FROM user_preferences WHERE key = ?", key).Scan(&value)
+    if err != nil {
+        return defaultValue
+    }
+    return value
 }

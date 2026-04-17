@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { GetDashboardState, SaveDashboardState } from "../../../bindings/tavlio/dbase/store";
+import { GetUserPreference, SaveDashboardState } from "../../../bindings/tavlio/dbase/store";
 import { type DashState, DEFAULT_BUILTINS } from "./DashboardUtils";
 
 export function useDashboardState() {
@@ -9,7 +9,7 @@ export function useDashboardState() {
   // Load from SQLite on mount
   useEffect(() => {
     let isMounted = true;
-    GetDashboardState().then((raw: string) => {
+    GetUserPreference("dashboard_state", "").then((raw: string) => {
       if (!isMounted) return;
       if (raw) {
         try {

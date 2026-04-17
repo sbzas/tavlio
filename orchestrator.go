@@ -141,7 +141,9 @@ func trackNrecord(db *dbase.Store, appChangeChan <-chan string) {
                 }
 
                 chunkEndTime := awaySince.Unix()
-                go vlm.RunBatch(chunkEndTime)
+                if db.GetUserPreference("vlm_enabled", "false") == "true" {
+                    go vlm.RunBatch(chunkEndTime)
+                }
                 
                 // final DB update for current session
                 db.UpdateSessionHeartbeat(sessionID, sessionStart, awaySince)
@@ -197,7 +199,9 @@ func trackNrecord(db *dbase.Store, appChangeChan <-chan string) {
                         db.LogRecording(sID, mPath, sStart.Unix(), int(time.Since(sStart).Seconds()))
                     }
 
-                    vlm.RunBatch(maxTs)
+                    if db.GetUserPreference("vlm_enabled", "false") == "true" {
+                        go vlm.RunBatch(maxTs)
+                    }
                 }(framesCopy, keepMapCopy, chunkPath, currentMainVideoPath, currentSessionID, currentSessionStart, logFirstChunk, chunkEndTime)
 
                 isRecordingLogged = true
