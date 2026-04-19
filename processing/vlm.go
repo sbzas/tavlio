@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"sync"
 	"time"
 
 	"github.com/corona10/goimagehash"
@@ -50,6 +51,7 @@ type VLMClient struct {
 	Store    *dbase.Store
 	LastHash *goimagehash.ImageHash
 	LastProcessTime time.Time 
+	mu sync.Mutex
 }
 
 // VISUAL DIFF: checks if frame is different enough to process (ft. a cooldown)
@@ -82,6 +84,15 @@ func (v *VLMClient) ShouldProcess(img image.Image) (bool, string) {
 
 // BATCH PROCESSOR: runs periodically to process pending images
 func (v *VLMClient) RunBatch(maxTimestamp int64) {
+	// If a batch is already running, exit immediately.
+	if !v.mu.TryLock() {
+		log.Println("VLM Batch is already running (or downloading). Skipping duplicate trigger.")
+		return
+	}
+	// release lock when function finishes
+	defer v.mu.Unlock()
+
+
 	// check if there's enough work
 	pending, err := v.Store.GetPendingImages(18, maxTimestamp)
 	if err != nil {
@@ -97,10 +108,10 @@ func (v *VLMClient) RunBatch(maxTimestamp int64) {
 
 	// start llama-server
 	cmd := exec.Command("llama-server",
-		"-hf", "ggml-org/gemma-3-4b-it-qat-GGUF",
+		"-hf", "ggml-org/gemma-4-E4B-it-GGUF",
 		"--port", "8080")
 
-	// redirect stdout/stderr to see if the server crashes
+	// redirect stdout/stderr to see if the server or model download crashes
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -109,11 +120,15 @@ func (v *VLMClient) RunBatch(maxTimestamp int64) {
 		return
 	}
 
+	processExited := make(chan error, 1)
+	go func() {
+		processExited <- cmd.Wait()
+	}()
+
 	// kill the server when this function exits
 	defer func() {
 		if cmd.Process != nil {
 			cmd.Process.Kill()
-			cmd.Wait()
 			log.Println("VLM Batch Finished. Server stopped.")
 		}
 	}()
@@ -121,17 +136,29 @@ func (v *VLMClient) RunBatch(maxTimestamp int64) {
 	// wait for server to warm up by polling the /health endpoint
 	log.Println("Waiting for server to become ready...")
 	serverReady := false
-	for range 30 {
-		resp, err := http.Get("http://127.0.0.1:8080/health")
-		if err == nil && resp.StatusCode == 200 {
-			resp.Body.Close()
-			serverReady = true
-			break
+	ticker := time.NewTicker(2 * time.Second) // Poll every 2s to reduce spam
+	defer ticker.Stop()
+
+	waitLoop:
+	for {
+		select {
+		case err := <-processExited:
+			// handle network drops during download, out-of-memory errors, or missing disk space gracefully
+			log.Printf("VLM server process exited or crashed: %v\n", err)
+			break waitLoop
+			
+		case <-ticker.C:
+			// Check if the HTTP server is finally responding
+			resp, err := http.Get("http://127.0.0.1:8080/health")
+			if err == nil && resp.StatusCode == 200 {
+				resp.Body.Close()
+				serverReady = true
+				break waitLoop
+			}
+			if err == nil {
+				resp.Body.Close()
+			}
 		}
-		if err == nil {
-			resp.Body.Close()
-		}
-		time.Sleep(1 * time.Second)
 	}
 
 	if !serverReady {
@@ -177,7 +204,7 @@ func (v *VLMClient) callLlamaServer(imagePaths []string) string {
     }
 
 	// construct the payload & send the request
-    prompt := "These are sequential screenshots from a user's computer session. Summarize the overall activity and workflow progression in 1 or 2 clear sentences."
+    prompt := "These are sequential screenshots from a user's computer session. Summarize the overall activity and workflow progression in a couple of concise sentences."
     content := []Content{{Type: "text", Text: prompt}}
 
 	// append each image to the payload
@@ -195,7 +222,7 @@ func (v *VLMClient) callLlamaServer(imagePaths []string) string {
     }
 
 	payload := ChatRequest{
-		Model: "gemma-3-4b-it-qat-GGUF",
+		Model: "gemma-4-E4B-it-GGUF",
 		Messages: []Message{{
 				Role: "user",
 				Content: content,
