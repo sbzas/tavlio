@@ -10,6 +10,8 @@ import { CalBlock, IntendedGhost } from "./CalBlocks";
 import { SessionDetail } from "./SessionDetail";
 import { ALL_HOURS, HOUR_H, GRID_H, TOTAL_H, MATCH_STYLE, S, minsToY, minsToH, groupOverlappingSessions } from "./CalendarUtils";
 
+import { GetSessionsForDay } from "../../../bindings/tavlio/dbase/store";
+
 const todayPill = (active: boolean): React.CSSProperties => ({
   fontFamily: SANS, fontSize: 11,
   background: active ? "rgba(107,94,82,0.14)" : "transparent",
@@ -39,8 +41,8 @@ export function CalendarView() {
   useEffect(() => {
     setLoading(true);
     setSelectedSession(null);
-    import("../../../bindings/tavlio/dbase/store")
-      .then(m => m.GetSessionsForDay(dateISO))
+    
+    GetSessionsForDay(dateISO)
       .then(sessions => {
         const events: CalEvent[] = (sessions ?? []).map((s, i) => ({
           id: "a" + i, dbID: s.ID, label: s.AppName, app: s.AppName,

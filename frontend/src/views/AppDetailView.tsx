@@ -10,6 +10,8 @@ import { Card, CardLabel, StatPill, Divider, ChartTooltip, EmptyChart } from "..
 import { I } from "../components/Icons";
 import { useWindowWidth } from "../hooks/useWindowWidth";
 
+import { GetDailyFocus, GetContextSwitchesByHour, GetWeeklyTotals } from "../../bindings/tavlio/dbase/store";
+
 interface DailyPoint    { Day: string;  Minutes: number; }
 interface HourlyPoint   { Hour: string; Minutes: number; }
 interface SessionPoint  { Day: string;  Count: number;   }
@@ -99,15 +101,14 @@ export function AppDetailView({ app, onBack }: { app: AppEntry; onBack: () => vo
     const dateISO = new Date().toISOString().slice(0, 10);
     const thisYear = new Date().getFullYear();
 
-    import("../../bindings/tavlio/dbase/store").then(m =>
       Promise.allSettled([
-        m.GetDailyFocus(14),
-        m.GetContextSwitchesByHour(dateISO),
+        GetDailyFocus(14),
+        GetContextSwitchesByHour(dateISO),
         // Sessions per weekday and weekly totals aren't scoped to a single app, thus the need for GetDailyFocus
-        m.GetWeeklyTotals(thisYear),
-        m.GetWeeklyTotals(thisYear - 1),
+        GetWeeklyTotals(thisYear),
+        GetWeeklyTotals(thisYear - 1),
       ])
-    ).then(([dailyR, hourlyR, weeklyThisR, weeklyLastR]) => {
+      .then(([dailyR, hourlyR, weeklyThisR, weeklyLastR]) => {
       if (dailyR.status   === "fulfilled") setDaily(
         (dailyR.value ?? []).map(d => ({ Day: d.Day, Minutes: Math.round(d.Hours * 60) }))
       );

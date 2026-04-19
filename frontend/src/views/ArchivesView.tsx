@@ -5,6 +5,8 @@ import { APP_TINTS, fmt } from "../mockConfig";
 import { Divider, EmptyChart } from "../components/Primitives";
 import { I } from "../components/Icons";
 
+import { GetAllAppsWeeklySummary } from "../../bindings/tavlio/dbase/store";
+
 function FolderCard({ app, index, total, onClick }: { app: AppEntry; index: number; total: number; onClick: () => void }) {
   const [hov, setHov] = useState(false);
 
@@ -64,8 +66,7 @@ export function ArchivesView({ onSelectApp }: { onSelectApp: (app: AppEntry) => 
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    import("../../bindings/tavlio/dbase/store")
-      .then(m => m.GetAllAppsWeeklySummary())
+    GetAllAppsWeeklySummary()
       .then(rows => {
         const entries: AppEntry[] = (rows ?? []).map(r => ({
           name:     r.Name,
