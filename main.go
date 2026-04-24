@@ -34,11 +34,23 @@ func init() {
 // and starts a goroutine that emits a time-based event every second. It subsequently runs the application and
 // logs any error that might occur.
 func main() {
-    setupEnvironment()
+    os.MkdirAll("data/screenshots", 0755)
+	os.MkdirAll("data/videos", 0755)
+
+	needsSeeding := false
+	if _, err := os.Stat("tracker.db"); os.IsNotExist(err) {
+		needsSeeding = true
+		fmt.Println(">> No existing database found. Preparing to seed...")
+	}
 
     db, e := dbase.NewStore("tracker.db")
     if e != nil { panic(e) }
-    seedAndCleanDB(db)
+
+	if needsSeeding {
+		seedDB(db)
+	}
+
+    cleanDB(db)
 
     // start foreground app tracker + buffered channel so the callback doesn't block if slow
     appChangeChan := make(chan string, 5) 
@@ -79,26 +91,15 @@ func main() {
 }
 
 // ----- setup helpers ----
-
-func setupEnvironment() {
-	fmt.Println(">> Resetting Database...")
-	os.Remove("tracker.db")
-	os.Remove("tracker.db-wal")
-	os.Remove("tracker.db-shm")
-
-	os.RemoveAll("data/screenshots")
-	os.RemoveAll("data/videos")
-	os.MkdirAll("data/screenshots", 0755)
-	os.MkdirAll("data/videos", 0755)
-}
-
-func seedAndCleanDB(db *dbase.Store) {
+func seedDB(db *dbase.Store) {
 	fmt.Println("Seeding database with mock data...")
 	if err := db.SeedMockData(); err != nil {
 		log.Fatalf("Failed to seed database: %v", err)
 	}
 	fmt.Println("Database seeded successfully!")
+}
 
+func cleanDB(db *dbase.Store) {
 	db.MarkOrphansAsFailed()
 	cleanOrphanedScreenshots() // Lives in orchestrator.go
 }

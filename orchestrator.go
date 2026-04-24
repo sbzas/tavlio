@@ -80,6 +80,7 @@ func trackNrecord(db *dbase.Store, appChangeChan <-chan string) {
 
             // final DB heartbeat to close out the session duration
             db.UpdateSessionHeartbeat(sessionID, sessionStart, time.Now())
+            db.DB.Close()
 
             fmt.Println("[Shutdown] Complete. Exiting safely.")
             os.Exit(0)
