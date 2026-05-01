@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { C, SANS, SERIF, VIGNETTE, GRAIN, SIDEBAR_W } from "./theme";
 import type { AppEntry } from "./types";
 import { useWindowWidth } from "./hooks/useWindowWidth";
-import { Sidebar } from "./components/Sidebar";
+import { Sidebar } from "./views/Settings";
 import { SearchBar }  from "./components/SearchBar";
 import { NavDock }    from "./components/NavDock";
 import { AIModal }    from "./components/AIModal";
