@@ -11,6 +11,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"tavlio/dbase"
+	"tavlio/processing"
 	"tavlio/tracking"
 	"tavlio/video"
 )
@@ -45,6 +46,10 @@ func main() {
 
     db, e := dbase.NewStore("tracker.db")
     if e != nil { panic(e) }
+
+	// dependency injection
+	db.EnsureLlamaCPP = processing.EnsureLlama
+    db.EnsureFFmpeg = processing.EnsureFFmpeg
 
 	if needsSeeding {
 		seedDB(db)

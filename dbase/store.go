@@ -6,10 +6,16 @@ import (
 	"time"
 
 	_ "modernc.org/sqlite"
+
+    "github.com/wailsapp/wails/v3/pkg/application"
 )
 
 type Store struct {
     DB *sql.DB
+
+    //deps
+    EnsureLlamaCPP  func() error
+    EnsureFFmpeg func() error
 }
 
 // hold the data needed by the VLM Batch Processor
@@ -73,6 +79,7 @@ func (s *Store) createSchema() error {
         duration_seconds INTEGER,
         keep_forever BOOLEAN DEFAULT 0,
         created_at INTEGER DEFAULT (unixepoch())
+        FOREIGN KEY(session_id) REFERENCES sessions(id) 
     );
     CREATE TABLE IF NOT EXISTS user_preferences (
     key TEXT PRIMARY KEY,
@@ -253,12 +260,52 @@ func (s *Store) SetUserPreference(key string, value string) error {
         VALUES (?, ?) 
         ON CONFLICT(key) DO UPDATE SET value = ?
     `, key, value, value)
+    
+    if err != nil {
+		return err
+	}
 
-	return err
+    // routing hook
+    if value == "true" {
+		switch key {
+		case "vlm_enabled":
+			if s.EnsureLlamaCPP != nil {
+				go s.handleDependencyDownload("vlm", "vlm_enabled", s.EnsureLlamaCPP)
+			}
+		case "capture_enabled":
+			if s.EnsureFFmpeg != nil {
+				go s.handleDependencyDownload("ffmpeg", "capture_enabled", s.EnsureFFmpeg)
+			}
+		}
+	}
+
+	return nil
 }
 
 func (s *Store) DeleteRecording(id int) error {
 	_, err := s.DB.Exec(`DELETE FROM recordings WHERE id = ?`, id)
 
 	return err
+}
+
+// Manage Wails events and handles any extraction failures
+func (s *Store) handleDependencyDownload(eventName string, dbKey string, download func() error) {
+	app := application.Get()
+	statusEvent := eventName + "-download-status:"
+	app.Event.Emit(statusEvent, "downloading")
+    
+	// trigger download sequence
+	err := download()
+	
+	if err != nil {
+		fmt.Printf("Error downloading %s: %v\n", eventName, err)
+		
+		// let frontend know the download failed
+		app.Event.Emit(statusEvent, "error")
+		
+		// revert the DB state so the UI toggle doesn't get stuck on "true"
+		s.DB.Exec("UPDATE user_preferences SET value = 'false' WHERE key = ?", dbKey)
+	} else {
+		app.Event.Emit(statusEvent, "ready")
+	}
 }
