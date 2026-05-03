@@ -51,6 +51,8 @@ func trackNrecord(db *dbase.Store, appChangeChan <-chan string) {
     sessionID, _ = db.LogSessionStart(currentApp)
     mainVideoPath = filepath.Join("data/videos", fmt.Sprintf("session_%d_%s.mp4", sessionID, time.Now().Format("20060102_150405")))
 
+    isCaptureEnabled := db.GetUserPreference("capture_enabled", "false") == "true"
+
     ticker := time.NewTicker(1 * time.Second)
 
     sigChan := make(chan os.Signal, 1)
@@ -121,6 +123,12 @@ func trackNrecord(db *dbase.Store, appChangeChan <-chan string) {
         // ----- CASE B: 1s ticks (for screenshots) -----
         case <-ticker.C:
             heartbeatCounter++
+
+            // frequently poll db capture enabled setting to determine whether to actually take screenshots or not
+            if heartbeatCounter % 3 == 0 {
+                isCaptureEnabled = db.GetUserPreference("capture_enabled", "false") == "true"
+            }
+
             if heartbeatCounter >= 60 {
                 db.UpdateSessionHeartbeat(sessionID, sessionStart, time.Now())
                 heartbeatCounter = 0
@@ -208,6 +216,10 @@ func trackNrecord(db *dbase.Store, appChangeChan <-chan string) {
                 isRecordingLogged = true
                 frameBuffer = []string{}
                 vlmNeededFiles = make(map[string]bool)
+            }
+
+            if !isCaptureEnabled {
+                continue 
             }
 
             // capture frame

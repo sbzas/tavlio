@@ -78,7 +78,7 @@ func (s *Store) createSchema() error {
         start_time INTEGER NOT NULL,
         duration_seconds INTEGER,
         keep_forever BOOLEAN DEFAULT 0,
-        created_at INTEGER DEFAULT (unixepoch())
+        created_at INTEGER DEFAULT (unixepoch()),
         FOREIGN KEY(session_id) REFERENCES sessions(id) 
     );
     CREATE TABLE IF NOT EXISTS user_preferences (
