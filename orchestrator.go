@@ -33,8 +33,10 @@ func trackNrecord(db *dbase.Store, appChangeChan <-chan string) {
 	// state Variables
     var (
         currentApp     = tracking.GetCurrentActiveApp()
+        currentAppExcl = db.GetAppExclusion(currentApp)
         sessionStart   = time.Now() 
         latestApp      = currentApp
+        latestAppExcl = currentAppExcl
         awaySince      time.Time
         distractStart  time.Time
 
@@ -48,8 +50,12 @@ func trackNrecord(db *dbase.Store, appChangeChan <-chan string) {
         isRecordingLogged bool
     )
 
-    sessionID, _ = db.LogSessionStart(currentApp)
-    mainVideoPath = filepath.Join("data/videos", fmt.Sprintf("session_%d_%s.mp4", sessionID, time.Now().Format("20060102_150405")))
+    if currentAppExcl != "hard" {
+        sessionID, _ = db.LogSessionStart(currentApp)
+        mainVideoPath = filepath.Join("data/videos", fmt.Sprintf("session_%d_%s.mp4", sessionID, time.Now().Format("20060102_150405")))
+    } else {
+        sessionID = 0
+    }
 
     isCaptureEnabled := db.GetUserPreference("capture_enabled", "false") == "true"
 
@@ -65,23 +71,27 @@ func trackNrecord(db *dbase.Store, appChangeChan <-chan string) {
             fmt.Println("\n[Shutdown] Saving final session data...")
 
             // dump anything in the holding pen back to the main buffer (removed duplicate DB logging here)
-            for _, f := range graceBuffer {
-                frameBuffer = append(frameBuffer, f.Path)
-            }
-
-            // flush the final frames to the main video synchronously to ensure it finishes before exit
-            if len(frameBuffer) > 0 {
-                chunkPath := generateTempVideoPath()
-                createChunkAndCleanImages(frameBuffer, chunkPath, vlmNeededFiles)
-                video.AppendToMainVideo(mainVideoPath, chunkPath)
-
-                if !isRecordingLogged {
-                    db.LogRecording(sessionID, mainVideoPath, sessionStart.Unix(), int(time.Since(sessionStart).Seconds()))
+            if latestAppExcl != "hard" {
+                for _, f := range graceBuffer {
+                    frameBuffer = append(frameBuffer, f.Path)
                 }
             }
 
-            // final DB heartbeat to close out the session duration
-            db.UpdateSessionHeartbeat(sessionID, sessionStart, time.Now())
+            // flush the final frames to the main video synchronously to ensure it finishes before exit
+            if currentAppExcl != "hard" {
+                if len(frameBuffer) > 0 {
+                    chunkPath := generateTempVideoPath()
+                    createChunkAndCleanImages(frameBuffer, chunkPath, vlmNeededFiles)
+                    video.AppendToMainVideo(mainVideoPath, chunkPath)
+
+                    if !isRecordingLogged {
+                        db.LogRecording(sessionID, mainVideoPath, sessionStart.Unix(), int(time.Since(sessionStart).Seconds()))
+                    }
+                }
+
+                // final DB heartbeat to close out the session duration
+                db.UpdateSessionHeartbeat(sessionID, sessionStart, time.Now())
+            }
             db.DB.Close()
 
             fmt.Println("[Shutdown] Complete. Exiting safely.")
@@ -91,14 +101,17 @@ func trackNrecord(db *dbase.Store, appChangeChan <-chan string) {
         case newAppName := <-appChangeChan:
             if !awaySince.IsZero() && latestApp != currentApp {
                 distractionDuration := int(time.Since(distractStart).Seconds())
-                if distractionDuration > 0 {
+                if distractionDuration > 0 && latestAppExcl != "hard" {
                     // Log the micro-session to the database!
-                    db.LogContextSwitch(sessionID, latestApp, distractStart.Unix(), distractionDuration)
+                    if currentAppExcl != "hard" {
+                        db.LogContextSwitch(sessionID, latestApp, distractStart.Unix(), distractionDuration)
+                    }
                     fmt.Printf("\n[Distraction Logged] %s for %ds\n", latestApp, distractionDuration)
                 }
             }
 
             latestApp = newAppName
+            latestAppExcl = db.GetAppExclusion(latestApp)
             distractStart = time.Now()
 
             if latestApp != currentApp && awaySince.IsZero() {
@@ -130,7 +143,9 @@ func trackNrecord(db *dbase.Store, appChangeChan <-chan string) {
             }
 
             if heartbeatCounter >= 60 {
-                db.UpdateSessionHeartbeat(sessionID, sessionStart, time.Now())
+                if currentAppExcl != "hard" {
+                    db.UpdateSessionHeartbeat(sessionID, sessionStart, time.Now())
+                }
                 heartbeatCounter = 0
             }
 
@@ -139,7 +154,7 @@ func trackNrecord(db *dbase.Store, appChangeChan <-chan string) {
                 fmt.Printf("\n[Session Switch] 60s elapsed. Committing switch to %s\n", latestApp)
                 
                 // flush the old session
-                if len(frameBuffer) > 0 {
+                if currentAppExcl != "hard" && len(frameBuffer) > 0 {
                     chunkPath := generateTempVideoPath()
                     createChunkAndCleanImages(frameBuffer, chunkPath, vlmNeededFiles)
                     video.AppendToMainVideo(mainVideoPath, chunkPath)
@@ -150,30 +165,42 @@ func trackNrecord(db *dbase.Store, appChangeChan <-chan string) {
                 }
 
                 chunkEndTime := awaySince.Unix()
-                if db.GetUserPreference("vlm_enabled", "false") == "true" {
+                if currentAppExcl != "hard" && db.GetUserPreference("vlm_enabled", "false") == "true" {
                     go vlm.RunBatch(chunkEndTime)
                 }
                 
                 // final DB update for current session
-                db.UpdateSessionHeartbeat(sessionID, sessionStart, awaySince)
+                if currentAppExcl != "hard" {
+                    db.UpdateSessionHeartbeat(sessionID, sessionStart, awaySince)
+                }
 
                 // start NEW session and reset the timer
                 currentApp = latestApp
+                currentAppExcl = latestAppExcl
                 sessionStart = awaySince
                 frameBuffer = []string{}
                 vlmNeededFiles = make(map[string]bool)
 
-                sessionID, _ = db.LogSessionStart(currentApp)
+                if currentAppExcl != "hard" {
+                    sessionID, _ = db.LogSessionStart(currentApp)
+                    mainVideoPath = filepath.Join("data/videos", fmt.Sprintf("session_%d_%s.mp4", sessionID, time.Now().Format("20060102_150405")))
+                } else {
+                    sessionID = 0
+                }
 
                 heartbeatCounter = 0
-                mainVideoPath = filepath.Join("data/videos", fmt.Sprintf("session_%d_%s.mp4", sessionID, time.Now().Format("20060102_150405")))
                 isRecordingLogged = false
 
                 // DUMP HOLDING PEN -> NEW SESSION
-                for _, f := range graceBuffer {
-                    frameBuffer = append(frameBuffer, f.Path)
-
-                    db.UpdateScreenshotSession(f.Path, sessionID) 
+                if currentAppExcl != "hard" {
+                    for _, f := range graceBuffer {
+                        frameBuffer = append(frameBuffer, f.Path)
+                        db.UpdateScreenshotSession(f.Path, sessionID) 
+                    }
+                } else {
+                    for _, f := range graceBuffer {
+                        os.Remove(f.Path)
+                    }
                 }
                 graceBuffer = nil
                 
@@ -182,7 +209,7 @@ func trackNrecord(db *dbase.Store, appChangeChan <-chan string) {
             }
 
             // create an intermediate video chunk (every 5 mins), but KEEP session active
-            if len(frameBuffer) >= MaxFramesPerChunk {
+            if currentAppExcl != "hard" && len(frameBuffer) >= MaxFramesPerChunk {
                 // use copies of frame slices to  later prevent main loop execution from being temporarily blocked
                 framesCopy := make([]string, len(frameBuffer))
                 copy(framesCopy, frameBuffer)
@@ -218,7 +245,7 @@ func trackNrecord(db *dbase.Store, appChangeChan <-chan string) {
                 vlmNeededFiles = make(map[string]bool)
             }
 
-            if !isCaptureEnabled {
+            if !isCaptureEnabled || latestAppExcl == "hard" {
                 continue 
             }
 

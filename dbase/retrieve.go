@@ -535,3 +535,16 @@ func (s *Store) GetUserPreference(key string, defaultValue string) string {
     }
     return value
 }
+
+// get the exclusion type for a given app ("hard", "soft", or "")
+func (s *Store) GetAppExclusion(appName string) string {
+    var exclusionType string
+    query := `SELECT e.exclusion_type FROM exclusions e 
+              JOIN apps a ON e.app_id = a.id 
+              WHERE a.name = ?`
+    err := s.DB.QueryRow(query, appName).Scan(&exclusionType)
+    if err != nil {
+        return ""
+    }
+    return exclusionType
+}

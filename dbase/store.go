@@ -3,6 +3,7 @@ package dbase
 import (
 	"database/sql"
 	"fmt"
+	"os"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -81,6 +82,11 @@ func (s *Store) createSchema() error {
         created_at INTEGER DEFAULT (unixepoch()),
         FOREIGN KEY(session_id) REFERENCES sessions(id) 
     );
+    CREATE TABLE IF NOT EXISTS exclusions (
+        app_id INTEGER PRIMARY KEY,
+        exclusion_type TEXT NOT NULL CHECK(exclusion_type IN ('hard', 'soft')),
+        FOREIGN KEY(app_id) REFERENCES apps(id)
+    );
     CREATE TABLE IF NOT EXISTS user_preferences (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -100,6 +106,73 @@ func (s *Store) createSchema() error {
     END;
     `
     _, err := s.DB.Exec(schema)
+
+    return err
+}
+
+// set an exclusion for an app
+func (s *Store) SetAppExclusion(appName string, exclusionType string) error {
+    // ensure app exists in apps table
+    _, err := s.DB.Exec("INSERT OR IGNORE INTO apps (name) VALUES (?)", appName)
+    if err != nil { return err }
+
+    var appId int
+    err = s.DB.QueryRow("SELECT id FROM apps WHERE name = ?", appName).Scan(&appId)
+    if err != nil { return err }
+
+    _, err = s.DB.Exec(`
+        INSERT INTO app_exclusions (app_id, exclusion_type) 
+        VALUES (?, ?) 
+        ON CONFLICT(app_id) DO UPDATE SET exclusion_type = ?
+    `, appId, exclusionType, exclusionType)
+    return err
+}
+
+// remove an exclusion for an app
+func (s *Store) RemoveAppExclusion(appName string) error {
+    var appId int
+    err := s.DB.QueryRow("SELECT id FROM apps WHERE name = ?", appName).Scan(&appId)
+    if err != nil { return nil } // App doesn't exist, so no exclusion to remove
+
+    _, err = s.DB.Exec("DELETE FROM app_exclusions WHERE app_id = ?", appId)
+    return err
+}
+
+// delete tracked data for an app that was hard excluded
+func (s *Store) PurgeAppTrackingData(appName string) error {
+    var appId int
+    err := s.DB.QueryRow("SELECT id FROM apps WHERE name = ?", appName).Scan(&appId)
+    if err != nil { return nil } // Doesn't exist
+
+    // Remove physical video files associated with this app
+    rows, err := s.DB.Query("SELECT file_path FROM recordings r JOIN sessions s ON r.session_id = s.id WHERE s.app_id = ?", appId)
+    if err == nil {
+        for rows.Next() {
+            var path string
+            if err := rows.Scan(&path); err == nil {
+                os.Remove(path)
+            }
+        }
+        rows.Close()
+    }
+
+    // Remove physical screenshot files associated with this app
+    imgRows, err := s.DB.Query("SELECT image_path FROM context_logs c JOIN sessions s ON c.session_id = s.id WHERE s.app_id = ?", appId)
+    if err == nil {
+        for imgRows.Next() {
+            var path string
+            if err := imgRows.Scan(&path); err == nil {
+                os.Remove(path)
+            }
+        }
+        imgRows.Close()
+    }
+
+    // Now delete DB records
+    s.DB.Exec(`DELETE FROM context_switches WHERE session_id IN (SELECT id FROM sessions WHERE app_id = ?)`, appId)
+    s.DB.Exec(`DELETE FROM context_logs WHERE session_id IN (SELECT id FROM sessions WHERE app_id = ?)`, appId)
+    s.DB.Exec(`DELETE FROM recordings WHERE session_id IN (SELECT id FROM sessions WHERE app_id = ?)`, appId)
+    _, err = s.DB.Exec(`DELETE FROM sessions WHERE app_id = ?`, appId)
 
     return err
 }
