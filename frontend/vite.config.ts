@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import react, { reactCompilerPreset } from '@vitejs/plugin-react'
+import babel   from '@rolldown/plugin-babel'
 import wails from "@wailsio/runtime/plugins/vite";
 
 // https://vite.dev/config/
@@ -8,11 +9,10 @@ export default defineConfig({
     host: '127.0.0.1'
   }, 
   plugins: [
-    react({
-      babel: {
-        plugins: [['babel-plugin-react-compiler']],
-      },
+    babel({
+      presets: [reactCompilerPreset()]
     }),
+    react(),
     wails("./bindings")
   ],
 })
