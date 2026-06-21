@@ -21,6 +21,7 @@ import {
   IconDotsVertical, 
   IconChevronUp,
   IconChevronDown,
+  IconPlayerPlayFilled,
 } from "@tabler/icons-react";
 
 type IconFn = (size?: number) => React.ReactElement;
@@ -48,4 +49,5 @@ export const I: Record<string, IconFn> = {
   dotsV:       (s = 18) => <IconDotsVertical     size={s} stroke={1.8} />,
   chevronUp:   (s = 13) => <IconChevronUp        size={s} stroke={2.0} />,
   chevronDown: (s = 13) => <IconChevronDown      size={s} stroke={2.0} />,
+  play:        (s = 18) => <IconPlayerPlayFilled size={s} />,
 };

@@ -4,128 +4,22 @@ import type { CalEvent } from "../../types";
 import { I } from "../../components/Icons";
 import { fmt } from "../../mockConfig";
 import { MATCH_STYLE, S, minsToLabel } from "./CalendarUtils";
+import { VideoPlayer } from "./VideoPlayer";
 
-import { 
-  GetRecordingForSession, 
-  SetRecordingKeepStatus, 
-  GetSessionSummary,
-  GetVideoRetentionLimit 
-} from "../../../bindings/tavlio/dbase/store";
-
-interface RecordingMeta {
-  durationSeconds: number;
-  createdAt:       string;
-  keepForever:     boolean;
-}
+import { GetSessionSummary } from "../../../bindings/tavlio/dbase/store";
 
 const iconBtn: React.CSSProperties = {
   background: "transparent", border: "none", padding: 4,
   color: C.umber, cursor: "pointer", display: "flex", alignItems: "center",
 };
 
-function VideoPlayer({ ev }: { ev: CalEvent }) {
-  const [meta, setMeta] = useState<RecordingMeta | null | "none">(null);
-  const [statusMsg, setStatusMsg] = useState<string | null>(null);
-  const [retentionDays, setRetentionDays] = useState<number>(3); 
-
-  // Listen for live updates from the Sidebar
-  useEffect(() => {
-    const handleRetentionUpdate = (e: any) => {
-      if (e.detail && typeof e.detail === 'number') {
-        setRetentionDays(e.detail);
-      }
-    };
-
-    window.addEventListener("retentionChanged", handleRetentionUpdate);
-    return () => window.removeEventListener("retentionChanged", handleRetentionUpdate);
-  }, []);
-
-  // Fetch initial data on mount
-  useEffect(() => {
-    if (ev.dbID == null) { setMeta("none"); return; }
-    
-    let isMounted = true;
-    
-    Promise.all([
-      GetRecordingForSession(ev.dbID).catch(() => null),
-      GetVideoRetentionLimit("video_retention_days", 3).catch(() => 3)
-    ]).then(([r, days]) => {
-      if (!isMounted) return; // Check before updating
-      setRetentionDays(days);
-      setMeta(r ? { durationSeconds: r.DurationSeconds, createdAt: r.CreatedAt, keepForever: r.KeepForever } : "none");
-    });
-
-    return () => { isMounted = false; }; // cleanup
-  }, [ev.dbID]);
-
-  const placeholder = (msg: string) => (
-    <div style={{ width: "100%", aspectRatio: "16/9", background: C.shadow, borderRadius: 10, ...S.centered, marginBottom: 12 }}>
-      <span style={S.bodyText}>{msg}</span>
-    </div>
-  );
-
-  if (meta === null)   return placeholder("Loading recording…");
-  if (meta === "none") return placeholder("No recording available");
-
-  const src = `/recording/${ev.dbID}`;
-
-  // Calculate days remaining using the dynamic state variable
-  const autoDeleteDays = meta.keepForever ? null : (() => {
-    const deletesAt = new Date(new Date(meta.createdAt).getTime() + retentionDays * 24 * 60 * 60 * 1000);
-    return Math.max(0, Math.ceil((deletesAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
-  })();
-
-  const toggleKeepStatus = async () => {
-    if (ev.dbID == null) return;
-    const targetState = !meta.keepForever;
-
-    try {
-      await SetRecordingKeepStatus(ev.dbID, targetState);
-
-      setMeta({ ...meta, keepForever: targetState }); 
-      setStatusMsg(targetState ? "Saved permanently" : "Auto-delete restored");
-      setTimeout(() => setStatusMsg(null), 3000); 
-    } catch (err) {
-      console.error("Failed to update keep status:", err);
-      setStatusMsg("Error updating");
-      setTimeout(() => setStatusMsg(null), 3000);
-    }
-  };
-
-  return (
-    <div style={{ marginBottom: 12 }}>
-      <video
-        src={src} controls onError={() => setMeta("none")}
-        style={{ width: "100%", aspectRatio: "16/9", borderRadius: 10, display: "block", background: C.shadow, outline: "none" }}
-      />
-      <div style={{ ...S.row, justifyContent: "space-between", marginTop: 8, alignItems: "center" }}>
-        <div style={S.subLabel}>
-          {meta.keepForever ? "Kept forever" : autoDeleteDays === 0 ? "Deletes today" : `Auto-deletes in ${autoDeleteDays}d`}
-          {statusMsg && <span style={{ color: meta.keepForever ? C.sienna : C.umber, marginLeft: 8 }}>· {statusMsg}</span>}
-        </div>
-        <button
-          onClick={toggleKeepStatus}
-          style={{ fontFamily: SANS, fontSize: 10, background: meta.keepForever ? (C.sienna || "#eee") : "transparent", border: "1px solid " + C.border, borderRadius: 6, padding: "3px 10px", color: meta.keepForever ? C.highlight : C.umber, cursor: "pointer", transition: "all 0.2s ease" }}
-        >
-          {meta.keepForever ? "Undo Keep" : "Keep forever"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
 export function SessionDetail({ ev, onClose }: { ev: CalEvent; onClose: () => void }) {
   const [summaryLines,   setSummaryLines]   = useState<string[]>([]);
   const [summaryLoading, setSummaryLoading] = useState(true);
 
   useEffect(() => {
-    if (ev.dbID == null) {
-      setSummaryLines(["No context snapshots available for this session."]);
-      setSummaryLoading(false);
-      return;
-    }
-    
-    let isMounted = true; 
+    if (ev.dbID == null) return; // render handles the empty state
+    let isMounted = true;
 
     GetSessionSummary(ev.dbID)
       .then(lines => {
@@ -138,7 +32,7 @@ export function SessionDetail({ ev, onClose }: { ev: CalEvent; onClose: () => vo
         if (isMounted) setSummaryLoading(false);
       });
 
-    return () => { isMounted = false; }; 
+    return () => { isMounted = false; };
   }, [ev.dbID]);
 
   useEffect(() => {
@@ -178,9 +72,11 @@ export function SessionDetail({ ev, onClose }: { ev: CalEvent; onClose: () => vo
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px" }}>
-        <VideoPlayer ev={ev} />
+        <VideoPlayer key={ev.dbID} ev={ev} />
         <div style={{ ...S.capsLabel, marginBottom: 8, fontSize: 10}}>Session summary</div>
-        {summaryLoading ? (
+        {ev.dbID == null ? (
+          <div style={S.bodyText}>No context snapshots available for this session.</div>
+        ) : summaryLoading ? (
           <div style={S.bodyText}>Loading snapshots…</div>
         ) : (
           <div style={{ ...S.col, gap: 8 }}>
