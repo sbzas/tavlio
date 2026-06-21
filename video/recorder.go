@@ -88,9 +88,13 @@ func ConcatVideos(chunkPaths []string, outputPath string) error {
     defer os.Remove(listPath) // Clean up list
 
     // run FFmpeg with "-c copy" (instantly copies streams, no quality loss or heavy CPU usage)
+    // don't drop "-movflags +faststart" for the final video so the webview can
+    // read metadata via a small Range request and stream/seek progressively
+    // instead of buffering the whole file into memory
     cmd := exec.Command("ffmpeg", "-y", "-f", "concat", "-safe", "0", 
         "-i", listPath, 
         "-c", "copy", 
+        "-movflags", "+faststart", 
         outputPath,
     )
 
