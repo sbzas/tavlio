@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
@@ -70,7 +71,7 @@ func main() {
 			application.NewService(db),
 		},
 		OnShutdown: func() {
-			tracking.StopForegroundTracker()
+			performShutdown(db)
 		},
 		Assets: application.AssetOptions{
 			Handler: video.AssetHandler(assets, db),
@@ -96,6 +97,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	// fallback: on Windows the window-X path exits the message loop without
+	// firing OnShutdown, so flush here too as performShutdown is idempotent
+	performShutdown(db)
 }
 
 // ----- setup helpers ----
@@ -110,4 +115,17 @@ func seedDB(db *dbase.Store) {
 func cleanDB(db *dbase.Store) {
 	db.MarkOrphansAsFailed()
 	cleanOrphanedScreenshots() // Lives in orchestrator.go
+}
+
+// tear down the tracker, flush the final session data and close DB
+// sync.Once used so OnShutdown and the post app.Run() fallback can both call it safely
+var shutdownOnce sync.Once
+
+func performShutdown(db *dbase.Store) {
+	shutdownOnce.Do(func() {
+		tracking.StopForegroundTracker()
+		close(shutdownChan)
+		<-doneChan
+		db.DB.Close()
+	})
 }

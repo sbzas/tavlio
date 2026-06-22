@@ -5,9 +5,7 @@ import (
 	"image/jpeg"
 	"maps"
 	"os"
-	"os/signal"
 	"path/filepath"
-	"syscall"
 	"time"
 
 	"tavlio/dbase"
@@ -19,6 +17,13 @@ import (
 )
 
 const MaxFramesPerChunk = 300 // 5 minutes at 1 FPS
+
+// shutdown coordination channels. @package-level so they're valid 
+// before any goroutine that uses them is spawned
+var (
+	shutdownChan = make(chan struct{})
+	doneChan     = make(chan struct{})
+)
 
 type PendingFrame struct {
 	Path   string
@@ -61,13 +66,10 @@ func trackNrecord(db *dbase.Store, appChangeChan <-chan string) {
 
     ticker := time.NewTicker(1 * time.Second)
 
-    sigChan := make(chan os.Signal, 1)
-    signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-	
 	for {
         select {
-        // ----- GRACEFUL SHUTDOWN -----
-        case <-sigChan:
+        // ----- GRACEFUL SHUTDOWN (triggered by Wails OnShutdown) -----
+        case <-shutdownChan:
             fmt.Println("\n[Shutdown] Saving final session data...")
 
             // dump anything in the holding pen back to the main buffer (removed duplicate DB logging here)
@@ -92,10 +94,10 @@ func trackNrecord(db *dbase.Store, appChangeChan <-chan string) {
                 // final DB heartbeat to close out the session duration
                 db.UpdateSessionHeartbeat(sessionID, sessionStart, time.Now())
             }
-            db.DB.Close()
 
             fmt.Println("[Shutdown] Complete. Exiting safely.")
-            os.Exit(0)
+            close(doneChan)
+            return
 
         // ----- CASE A: user switched apps -----
         case newAppName := <-appChangeChan:
