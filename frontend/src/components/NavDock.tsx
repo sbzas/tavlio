@@ -6,6 +6,7 @@ const NAV = [
   { id: "dashboard", label: "Dashboard", icon: () => I.dashboard() },
   { id: "archives",  label: "Archives",  icon: () => I.archive()   },
   { id: "calendar",  label: "Calendar",  icon: () => I.calendar()  },
+  { id: "settings",  label: "Settings",  icon: () => I.settings(15)  },
 ];
 
 interface NavDockProps { active: string; onNav: (v: string) => void; }

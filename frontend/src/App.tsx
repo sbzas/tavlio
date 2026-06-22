@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { C, SANS, SERIF, VIGNETTE, GRAIN, SIDEBAR_W } from "./theme";
+import { C, SANS, SERIF, VIGNETTE, GRAIN } from "./theme";
 import type { AppEntry } from "./types";
 import { useWindowWidth } from "./hooks/useWindowWidth";
-import { Sidebar } from "./views/Settings";
 import { SearchBar }  from "./components/SearchBar";
 import { NavDock }    from "./components/NavDock";
 import { AIModal }    from "./components/AIModal";
@@ -11,20 +10,15 @@ import { DashboardView } from "./views/Dashboard/DashboardView";
 import { ArchivesView }  from "./views/ArchivesView";
 import { AppDetailView } from "./views/AppDetailView";
 import { CalendarView }  from "./views/Calendar/CalendarView";
-import { I } from "./components/Icons";
+import { SettingsView }  from "./views/Settings/SettingsView";
 
 export default function App() {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [view, setView]               = useState("dashboard");
   const [collapsed, setCollapsed]     = useState(false);
   const [aiQuery, setAiQuery]         = useState<string | null>(null);
   const [selectedApp, setSelectedApp] = useState<AppEntry | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const w         = useWindowWidth();
-
-  // On narrow screens the sidebar overlays rather than pushing content
-  const frameLeft      = sidebarOpen && w >= 768 ? SIDEBAR_W + 8 : 8;
-  const sidebarOverlay = sidebarOpen && w < 768;
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -33,9 +27,6 @@ export default function App() {
     el.addEventListener("scroll", h, { passive: true });
     return () => el.removeEventListener("scroll", h);
   }, []);
-
-  // Close sidebar when viewport shrinks below tablet breakpoint
-  useEffect(() => { if (w < 768) setSidebarOpen(false); }, [w]);
 
   const handleNav    = (v: string) => { setView(v); setSelectedApp(null); };
   const handleSearch = useCallback((q: string) => setAiQuery(q), []);
@@ -68,54 +59,12 @@ export default function App() {
       <div style={{ position: "fixed", inset: 0, zIndex: 999, pointerEvents: "none", opacity: 0.035, backgroundImage: GRAIN }} />
       <div style={{ position: "fixed", inset: 0, zIndex: 0, pointerEvents: "none", backgroundImage: VIGNETTE }} />
 
-      {/* Backdrop blur when sidebar overlays on narrow screens */}
-      {sidebarOverlay && (
-        <div
-          onClick={() => setSidebarOpen(false)}
-          style={{ position: "fixed", inset: 0, zIndex: 99, backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)" }}
-        />
-      )}
-
-      {/* handle for indicating there's something at the left of the screen (the sidebar) */}
-      <div
-        style={{
-          position: "fixed", 
-          top: "50%", 
-          left: sidebarOpen ? SIDEBAR_W : 0, 
-          transform: "translateY(-50%)",
-          width: 20, 
-          height: 48,
-          background: C.sidebar, 
-          border: `1px solid ${C.border}`,
-          borderLeft: "none", // Blends seamlessly into the sidebar's right border
-          borderRadius: "0 6px 6px 0",
-          display: "flex", 
-          justifyContent: "center", 
-          alignItems: "center",
-          zIndex: 105, // Sits just above the sidebar (zIndex 100)
-          color: C.umber, 
-          transition: "left 0.28s cubic-bezier(.4,0,.2,1)", 
-          pointerEvents: "none",
-          boxShadow: "2px 0 8px rgba(107,94,82,0.06)" 
-        }}
-      >
-        {I.dotsV(16)}
-      </div>
-
-      {/* hover driven sidebar */}
-      <Sidebar
-        open={sidebarOpen}
-        onOpen={() => setSidebarOpen(true)}
-        onClose={() => setSidebarOpen(false)}
-      />
-
       {/* Main content frame */}
       <div style={{
-        position: "fixed", top: 8, right: 8, bottom: 8, left: frameLeft,
+        position: "fixed", top: 8, right: 8, bottom: 8, left: 8,
         borderRadius: 16, overflow: "hidden", background: C.bg,
         boxShadow: "0 0 0 1px rgba(107,94,82,0.18), 0 8px 40px rgba(107,94,82,0.18)",
-        transition: "left 0.28s cubic-bezier(.4,0,.2,1), filter 0.28s",
-        zIndex: 1, filter: sidebarOpen ? "blur(3px)" : "none",
+        zIndex: 1,
       }}>
         <div style={{ position: "absolute", inset: 0, zIndex: 2, pointerEvents: "none", backgroundImage: VIGNETTE, opacity: 0.9 }} />
 
@@ -160,6 +109,7 @@ export default function App() {
               />
             )}
             {view === "calendar" && <CalendarView />}
+            {view === "settings" && <SettingsView />}
           </div>
         </div>
       </div>
