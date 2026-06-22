@@ -12,7 +12,6 @@ package tracking
 // ONLY declarations (!)
 extern void startObserver();
 extern void stopObserver();
-extern void runLoop();
 extern char* getCurrentActiveApp();
 */
 import "C"
@@ -25,6 +24,8 @@ import (
 var (
     appChangeChanMu     sync.Mutex
     appChangeChanGlobal chan<- string
+    stopChan            = make(chan struct{})
+    stopOnce            sync.Once
 )
 
 //export onForegroundAppChanged
@@ -46,27 +47,27 @@ func onForegroundAppChanged(appName *C.char) {
     }(name)
 }
 
-// observe NSWorkspace notifications to detect app switches
-//
-// CRITICAL FOR STANDALONE USAGE: macOS requires Cocoa to run on the OS thread 
-// that initialized it. If testing this without Wails, runtime.LockOSThread() MUST be called
-// at the very beginning of main before calling this, otherwise the Go scheduler will move goroutines and crash
+// register an NSWorkspace observer that fires onForegroundAppChanged 
+// Wails drives the loop run so blocking execution until the observer is stopped is enough
 func StartForegroundTracker(appChangeChan chan<- string) {
 	appChangeChanMu.Lock()
 	appChangeChanGlobal = appChangeChan
 	appChangeChanMu.Unlock()
 
 	C.startObserver()
-    
-	// If running inside Wails, Wails handles the run loop. 
-	// For standalone testing, you need this to block and process events.
-	C.runLoop() 
-	
+
+	<-stopChan
+
 	C.stopObserver()
 
 	appChangeChanMu.Lock()
 	appChangeChanGlobal = nil
 	appChangeChanMu.Unlock()
+}
+
+// signal StartForegroundTracker to unregister the observer and return (to be called from Wails' OnShutdown)
+func StopForegroundTracker() {
+	stopOnce.Do(func() { close(stopChan) })
 }
 
 func GetCurrentActiveApp() string {

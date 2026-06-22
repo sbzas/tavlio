@@ -69,6 +69,9 @@ func main() {
 		Services: []application.Service{
 			application.NewService(db),
 		},
+		OnShutdown: func() {
+			tracking.StopForegroundTracker()
+		},
 		Assets: application.AssetOptions{
 			Handler: video.AssetHandler(assets, db),
 		},

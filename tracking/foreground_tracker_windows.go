@@ -96,6 +96,10 @@ func StartForegroundTracker(appChangeChan chan<- string) {
     }
 }
 
+// no-op on Windows (the message loop is torn down when the process exits) 
+// Implemented for API parity with the darwin build
+func StopForegroundTracker() {}
+
 // Get PID and exe name from window handle
 func getProcessInfo(hwnd uintptr) (uint32, string) {
     var pid uint32

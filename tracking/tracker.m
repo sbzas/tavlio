@@ -62,10 +62,6 @@ void stopObserver() {
     });
 }
 
-void runLoop() {
-    [[NSRunLoop currentRunLoop] runUntilDate:[NSDate distantFuture]];
-}
-
 char* getCurrentActiveApp() {
     @autoreleasepool {
         NSRunningApplication *app = [[NSWorkspace sharedWorkspace] frontmostApplication];
