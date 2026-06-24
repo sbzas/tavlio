@@ -9,14 +9,12 @@ import (
 	_ "modernc.org/sqlite"
 
     "github.com/wailsapp/wails/v3/pkg/application"
+
+    "tavlio/processing"
 )
 
 type Store struct {
-    DB *sql.DB
-
-    //deps
-    EnsureLlamaCPP  func() error
-    EnsureFFmpeg func() error
+	DB *sql.DB
 }
 
 // hold the data needed by the VLM Batch Processor
@@ -342,13 +340,9 @@ func (s *Store) SetUserPreference(key string, value string) error {
     if value == "true" {
 		switch key {
 		case "vlm_enabled":
-			if s.EnsureLlamaCPP != nil {
-				go s.handleDependencyDownload("vlm", "vlm_enabled", s.EnsureLlamaCPP)
-			}
+			go s.handleDependencyDownload("vlm", "vlm_enabled", processing.EnsureLlama)
 		case "capture_enabled":
-			if s.EnsureFFmpeg != nil {
-				go s.handleDependencyDownload("ffmpeg", "capture_enabled", s.EnsureFFmpeg)
-			}
+			go s.handleDependencyDownload("ffmpeg", "capture_enabled", processing.EnsureFFmpeg)
 		}
 	}
 

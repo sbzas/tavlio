@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"tavlio/ai"
 	"tavlio/dbase"
-	"tavlio/processing"
 	"tavlio/tracking"
 	"tavlio/video"
 
@@ -33,7 +33,7 @@ type PendingFrame struct {
 
 // orchestrate all app modules to properly track and record the user's actions
 func trackNrecord(db *dbase.Store, appChangeChan <-chan string) {
-    vlm := &processing.VLMClient{Store: db}
+    vlm := &ai.VLMClient{Store: db}
 
 	// state Variables
     var (
