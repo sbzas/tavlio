@@ -62,6 +62,11 @@ type ExpiredVideo struct {
 	Path string
 }
 
+type ExcludedApp struct {
+	Name          string
+	ExclusionType string // "hard" | "soft"
+}
+
 // Return all sessions that overlap with the given calendar date (UTC)
 func (s *Store) GetSessionsForDay(dateISO string) ([]SessionRow, error) {
 	// Parse the date and compute the Unix range for the full day (local time)
@@ -534,6 +539,50 @@ func (s *Store) GetUserPreference(key string, defaultValue string) string {
         return defaultValue
     }
     return value
+}
+
+// return the names of every app that has ever been tracked (even briefly)
+func (s *Store) GetAllTrackedApps() ([]string, error) {
+	rows, err := s.DB.Query("SELECT name FROM apps ORDER BY name")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var names []string
+	for rows.Next() {
+		var n string
+		if err := rows.Scan(&n); err != nil {
+			return nil, err
+		}
+		names = append(names, n)
+	}
+	return names, rows.Err()
+}
+
+// return every excluded app with its exclusion type, split-ready for the UI
+func (s *Store) GetExcludedApps() ([]ExcludedApp, error) {
+	const q = `
+		SELECT a.name, e.exclusion_type
+		FROM exclusions e
+		JOIN apps a ON a.id = e.app_id
+		ORDER BY e.exclusion_type, a.name`
+
+	rows, err := s.DB.Query(q)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []ExcludedApp
+	for rows.Next() {
+		var r ExcludedApp
+		if err := rows.Scan(&r.Name, &r.ExclusionType); err != nil {
+			return nil, err
+		}
+		results = append(results, r)
+	}
+	return results, rows.Err()
 }
 
 // get the exclusion type for a given app ("hard", "soft", or "")
