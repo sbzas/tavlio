@@ -3,6 +3,7 @@ import { useWindowWidth } from "../../hooks/useWindowWidth";
 import { useSettings } from "../../hooks/useSettings";
 import { Divider } from "../../components/Primitives";
 import { SettingToggle, RetentionSpinner, DefaultButton } from "../../components/SettingsComponents";
+import { ExcludedAppsCard } from "../../components/ExcludedAppsCard";
 
 const SECTIONS = [
   { label: "Capture",       items: ["Capture enabled", "Video retention"] },
@@ -23,6 +24,8 @@ export function SettingsView() {
       return <SettingToggle key={item} label={item} enabled={settings.vlmEnabled} status={settings.vlmStatus} onToggle={settings.toggleVLM} />;
     if (item === "Capture enabled")
       return <SettingToggle key={item} label={item} enabled={settings.captureEnabled} status={settings.captureStatus} onToggle={settings.toggleCapture} />;
+    if (item === "Excluded apps")
+      return <ExcludedAppsCard key={item} />;
     return <DefaultButton key={item} label={item} />;
   }
 
