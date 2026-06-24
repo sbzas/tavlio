@@ -121,7 +121,7 @@ func (s *Store) SetAppExclusion(appName string, exclusionType string) error {
     if err != nil { return err }
 
     _, err = s.DB.Exec(`
-        INSERT INTO app_exclusions (app_id, exclusion_type) 
+        INSERT INTO exclusions (app_id, exclusion_type) 
         VALUES (?, ?) 
         ON CONFLICT(app_id) DO UPDATE SET exclusion_type = ?
     `, appId, exclusionType, exclusionType)
@@ -134,7 +134,7 @@ func (s *Store) RemoveAppExclusion(appName string) error {
     err := s.DB.QueryRow("SELECT id FROM apps WHERE name = ?", appName).Scan(&appId)
     if err != nil { return nil } // App doesn't exist, so no exclusion to remove
 
-    _, err = s.DB.Exec("DELETE FROM app_exclusions WHERE app_id = ?", appId)
+    _, err = s.DB.Exec("DELETE FROM exclusions WHERE app_id = ?", appId)
     return err
 }
 
