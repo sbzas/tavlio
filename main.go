@@ -53,6 +53,9 @@ func main() {
 
     cleanDB(db)
 
+    // trigger an initial background sync of all user-configured calendars on startup
+    go db.SyncAllCalendars()
+
     // start foreground app tracker + buffered channel so the callback doesn't block if slow
     appChangeChan := make(chan string, 5) 
     go tracking.StartForegroundTracker(appChangeChan)

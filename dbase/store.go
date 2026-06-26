@@ -25,7 +25,7 @@ type PendingImage struct {
 }
 
 func NewStore(dbPath string) (*Store, error) {
-    db, err := sql.Open("sqlite", dbPath+"?_pragma=journal_mode=WAL&_pragma=busy_timeout=5000")
+    db, err := sql.Open("sqlite", dbPath+"?_pragma=journal_mode=WAL&_pragma=busy_timeout=5000&_pragma=foreign_keys=on")
     if err != nil {
         return nil, err
     }
@@ -84,6 +84,22 @@ func (s *Store) createSchema() error {
         app_id INTEGER PRIMARY KEY,
         exclusion_type TEXT NOT NULL CHECK(exclusion_type IN ('hard', 'soft')),
         FOREIGN KEY(app_id) REFERENCES apps(id)
+    );
+    CREATE TABLE IF NOT EXISTS calendars (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        provider TEXT NOT NULL CHECK(provider IN ('google', 'apple', 'outlook', 'caldotcom', 'custom')),
+        url TEXT NOT NULL,
+        last_synced INTEGER DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS calendar_events (
+        id TEXT PRIMARY KEY,
+        calendar_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        start_time INTEGER NOT NULL,
+        end_time INTEGER NOT NULL,
+        FOREIGN KEY(calendar_id) REFERENCES calendars(id) ON DELETE CASCADE
     );
     CREATE TABLE IF NOT EXISTS user_preferences (
     key TEXT PRIMARY KEY,
