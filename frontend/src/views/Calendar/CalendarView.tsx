@@ -1,16 +1,18 @@
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { C, SANS, SERIF } from "../../theme";
 import type { CalEvent } from "../../types";
-import { APP_TINTS, INTENDED_EVENTS, fmt } from "../../mockConfig";
+import { fmt } from "../../mockConfig";
 import { StatPill } from "../../components/Primitives";
 import { I } from "../../components/Icons";
+import { IconRefresh } from "@tabler/icons-react";
 
 // Internal Calendar Components
 import { CalBlock, IntendedGhost } from "./CalBlocks";
 import { SessionDetail } from "./SessionDetail";
 import { ALL_HOURS, HOUR_H, GRID_H, TOTAL_H, MATCH_STYLE, S, minsToY, minsToH, groupOverlappingSessions } from "./CalendarUtils";
-
-import { GetSessionsForDay } from "../../../bindings/tavlio/dbase/store";
+import { useCalendarData } from "./CalendarData";
+import { ConnectCalendarModal } from "./ConnectCalendar";
+import { CalendarDock, IconList } from "./CalendarDock";
 
 const todayPill = (active: boolean): React.CSSProperties => ({
   fontFamily: SANS, fontSize: 11,
@@ -20,52 +22,35 @@ const todayPill = (active: boolean): React.CSSProperties => ({
 });
 
 export function CalendarView() {
-  const [dayOffset,       setDayOffset]       = useState(0);
+  const data = useCalendarData();
+  const {
+    dayOffset, setDayOffset, dateLabel,
+    actual, loading, gridScrollRef,
+    calendars, intendedEvents, hiddenCalIds, calendarConnected,
+    syncing, syncAll, addCalendar, deleteCalendar, toggleCalendar,
+  } = data;
+
   const [selectedSession, setSelectedSession] = useState<CalEvent | null>(null);
-  const [actual,          setActual]          = useState<CalEvent[]>([]);
-  const [loading,         setLoading]         = useState(true);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showDock,    setShowDock]    = useState(false);
 
-  const calendarConnected = false;
-  const intendedEvents = calendarConnected ? INTENDED_EVENTS : [];
-  const gridScrollRef  = useRef<HTMLDivElement>(null);
-
-  const targetDate = new Date();
-  targetDate.setDate(targetDate.getDate() + dayOffset);
-  const dateLabel = targetDate.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
-  const dateISO   = targetDate.toISOString().slice(0, 10);
-
-  useEffect(() => {
-    gridScrollRef.current?.scrollTo({ top: 7 * HOUR_H });
-  }, []);
-
-  useEffect(() => {
-    setLoading(true);
-    setSelectedSession(null);
-    
-    GetSessionsForDay(dateISO)
-      .then(sessions => {
-        const events: CalEvent[] = (sessions ?? []).map((s, i) => ({
-          id: "a" + i, dbID: s.ID, label: s.AppName, app: s.AppName,
-          start: s.StartMins, end: s.EndMins,
-          color: APP_TINTS[s.AppName] ?? C.sienna,
-          type: "actual" as const,
-          match: (s.Match as CalEvent["match"]) ?? "unplanned",
-        }));
-        setActual(events);
-      })
-      .catch(() => setActual([]))
-      .finally(() => setLoading(false));
-  }, [dateISO]);
+  const handleSync = () => {
+    syncAll().catch(err => alert("Failed to sync calendars: " + err));
+  };
 
   const intendedMins = intendedEvents.reduce((s, e) => s + (e.end - e.start), 0);
   const alignedMins  = actual.filter(e => e.match === "aligned").reduce((s, e) => s + (e.end - e.start), 0);
   const score        = intendedMins > 0 ? Math.round((alignedMins / intendedMins) * 100) : 0;
   const trackedMins  = actual.reduce((s, e) => s + (e.end - e.start), 0);
+  const unplanned    = actual.filter(e => e.match === "unplanned");
+  const unplannedMins = unplanned.reduce((s, e) => s + (e.end - e.start), 0);
   // group overlapping sessions before rendering
   const clusteredActual = groupOverlappingSessions(actual);
 
-  const goDay   = (delta: number) => setDayOffset(o => o + delta);
-  const goToday = () => setDayOffset(0);
+  // Clearing the detail panel on day change is done here in the handlers so a single day navigation batches into one render
+  // instead of cascading a separate setSelectedSession render after the data effects
+  const goDay   = (delta: number) => { setSelectedSession(null); setDayOffset(o => o + delta); };
+  const goToday = () => { setSelectedSession(null); setDayOffset(0); };
 
   return (
     <div style={{ paddingBottom: 90 }}>
@@ -79,6 +64,29 @@ export function CalendarView() {
           <button onClick={() => goDay(-1)} style={S.navBtn}>{I.chevronL(13)}</button>
           <button onClick={goToday} style={todayPill(dayOffset === 0)}>Today</button>
           <button onClick={() => goDay(1)}  style={S.navBtn}>{I.chevronR(13)}</button>
+
+          {calendarConnected && (
+            <>
+              <div style={{ width: 1, height: 16, background: C.border, margin: "0 4px" }} />
+              <button onClick={handleSync} disabled={syncing} style={S.navBtn} title="Sync Calendars Now">
+                <IconRefresh size={14} style={{
+                  color: C.umber,
+                  transform: syncing ? "rotate(360deg)" : "none",
+                  transition: syncing ? "transform 1s ease" : "none",
+                }} />
+              </button>
+              <button onClick={() => setShowAddModal(true)} style={S.navBtn} title="Add Calendar Feed">
+                {I.plus(13)}
+              </button>
+              <button
+                onClick={() => setShowDock(!showDock)}
+                style={{ ...S.navBtn, background: showDock ? "rgba(107,94,82,0.18)" : S.navBtn.background }}
+                title="Manage Connected Calendars"
+              >
+                <IconList size={14} style={{ color: C.umber }} />
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -87,8 +95,8 @@ export function CalendarView() {
         {trackedMins > 0 && <StatPill label="Alignment score" value={score + "%"} />}
         {calendarConnected && <StatPill label="Intended" value={fmt(intendedMins)} />}
         {trackedMins > 0 && <StatPill label="Tracked" value={fmt(trackedMins)} />}
-        {trackedMins > 0 && actual.filter(e => e.match === "unplanned").length > 0 && (
-          <StatPill label="Unplanned" value={fmt(actual.filter(e => e.match === "unplanned").reduce((s, e) => s + (e.end - e.start), 0))} />
+        {trackedMins > 0 && unplanned.length > 0 && (
+          <StatPill label="Unplanned" value={fmt(unplannedMins)} />
         )}
       </div>
 
@@ -119,7 +127,7 @@ export function CalendarView() {
       </div>
 
       {/* Outer card */}
-      <div style={{ ...S.card, display: "flex", alignItems: "stretch" }}>
+      <div style={{ ...S.card, display: "flex", alignItems: "stretch", position: "relative" }}>
         <div ref={gridScrollRef} style={{ flex: 1, minWidth: 0, height: GRID_H, overflowY: "auto" }}>
           <div style={{ display: "flex", height: TOTAL_H }}>
 
@@ -158,10 +166,10 @@ export function CalendarView() {
                 }}>
                   <span style={{ color: C.sand, opacity: 0.5, display: "flex" }}>{I.calendar(22)}</span>
                   <p style={{
-                    fontFamily: SANS, fontSize: 11, color: C.umber, textAlign: "center", lineHeight: 1.6, 
+                    fontFamily: SANS, fontSize: 11, color: C.umber, textAlign: "center", lineHeight: 1.6,
                     opacity: 0.75, maxWidth: 175, background: C.surface, padding: "4px 10px", borderRadius: 6,
                   }}>Connect a calendar to see your intended schedule here</p>
-                  <button style={{ ...S.connectBtn, pointerEvents: "auto" }}>Connect →</button>
+                  <button onClick={() => setShowAddModal(true)} style={{ ...S.connectBtn, pointerEvents: "auto" }}>Connect →</button>
                 </div>
               )}
 
@@ -202,32 +210,50 @@ export function CalendarView() {
                 </div>
               )}
 
-                {clusteredActual.map(group => {
-                  // first item is our primary session (the longest one starting earliest)
-                  const primaryEv = group[0];
-                  const hiddenCount = group.length - 1;
-                  
-                  // merge boundaries so the cal block stretches to cover the entire cluster's time span
-                  const clusterStart = Math.min(...group.map(e => e.start));
-                  const clusterEnd = Math.max(...group.map(e => e.end));
-                  const displayEv = { ...primaryEv, start: clusterStart, end: clusterEnd };
+              {clusteredActual.map(group => {
+                // first item is our primary session (the longest one starting earliest)
+                const primaryEv = group[0];
+                const hiddenCount = group.length - 1;
 
-                  return (
-                    <CalBlock
-                      key={primaryEv.id} 
-                      ev={displayEv} 
-                      col="actual"
-                      selected={selectedSession?.id === primaryEv.id}
-                      onClick={() => setSelectedSession(selectedSession?.id === primaryEv.id ? null : primaryEv)}
-                      hiddenCount={hiddenCount} 
-                    />
-                  );
-                })}
+                // merge boundaries so the cal block stretches to cover the entire cluster's time span
+                const clusterStart = Math.min(...group.map(e => e.start));
+                const clusterEnd   = Math.max(...group.map(e => e.end));
+                const displayEv    = { ...primaryEv, start: clusterStart, end: clusterEnd };
+
+                return (
+                  <CalBlock
+                    key={primaryEv.id}
+                    ev={displayEv}
+                    col="actual"
+                    selected={selectedSession?.id === primaryEv.id}
+                    onClick={() => setSelectedSession(selectedSession?.id === primaryEv.id ? null : primaryEv)}
+                    hiddenCount={hiddenCount}
+                  />
+                );
+              })}
             </div>
           </div>
         </div>
+
+        {showDock && calendarConnected && (
+          <CalendarDock
+            calendars={calendars}
+            hiddenCalIds={hiddenCalIds}
+            onToggle={toggleCalendar}
+            onDelete={id => deleteCalendar(id).catch(err => alert("Failed to delete calendar: " + err))}
+            onClose={() => setShowDock(false)}
+          />
+        )}
+
         {selectedSession && <SessionDetail ev={selectedSession} onClose={() => setSelectedSession(null)} />}
       </div>
+
+      {showAddModal && (
+        <ConnectCalendarModal
+          onClose={() => setShowAddModal(false)}
+          onAdd={addCalendar}
+        />
+      )}
     </div>
   );
 }
