@@ -10,6 +10,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"tavlio/ai"
 	"tavlio/dbase"
 	"tavlio/tracking"
 	"tavlio/video"
@@ -54,6 +55,7 @@ func main() {
 		Description: "A cross-platform, fully local desktop app for tracking and displaying users' digital habits",
 		Services: []application.Service{
 			application.NewService(db),
+			application.NewService(ai.CreateHardwareService(db)),
 		},
 		OnShutdown: func() {
 			performShutdown(db)

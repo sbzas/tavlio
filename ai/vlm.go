@@ -106,10 +106,11 @@ func (v *VLMClient) RunBatch(maxTimestamp int64) {
 
 	log.Println("Starting VLM Batch...")
 
-	// start llama-server
+	// start llama-server using the user's selected (or default) model ref
+	modelRef := v.Store.GetUserPreference("vlm_model", DefaultModelRef())
 	cmd := exec.Command("llama-server",
-		"-hf", "ggml-org/gemma-4-E4B-it-GGUF",
-		"--port", "8080")
+		"-hf", modelRef,
+		"--jinja", "--port", "8080")
 
 	// redirect stdout/stderr to see if the server or model download crashes
 	cmd.Stdout = os.Stdout
@@ -221,8 +222,9 @@ func (v *VLMClient) callLlamaServer(imagePaths []string) string {
         })
     }
 
+	modelRef := v.Store.GetUserPreference("vlm_model", DefaultModelRef())
 	payload := ChatRequest{
-		Model: "gemma-4-E4B-it-GGUF",
+		Model: modelRef,
 		Messages: []Message{{
 				Role: "user",
 				Content: content,
